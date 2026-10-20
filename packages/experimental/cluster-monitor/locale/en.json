@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Cluster job monitor",
+    "description": "Track SSP training job state, training curves, and logs through the local sco CLI."
+  }
+}

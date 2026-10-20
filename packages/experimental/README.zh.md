@@ -85,6 +85,8 @@ kind: "package-group"
 | [`worktree`](worktree/README.zh.md) | 创建具名 Git 工作树并改变调用 Session 的当前目录 | `ctx.worktrees` |
 | [`sco`](sco/README.zh.md) | 通过本地 sco CLI 执行 SenseCore SSP 训练任务操作 | `ctx.sco` |
 | [`tool-sco`](tool-sco/README.zh.md) | 面向模型的 SSP 训练任务工具，提交和停止前先询问 | `ctx.tools` |
+| [`cluster-monitor`](cluster-monitor/README.zh.md) | 在 Host 上轮询关注的 SSP 任务：状态、训练曲线和日志 | `ctx.clusterMonitor` |
+| [`client-ui-cluster-monitor`](client-ui-cluster-monitor/README.zh.md) | 关注的 SSP 任务的集群任务页面 | — |
 
 -----
 

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Cluster jobs page",
+    "description": "View SSP job state, training curves, and logs on the Cluster jobs sidebar page."
+  }
+}

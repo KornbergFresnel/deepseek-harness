@@ -637,6 +637,55 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'clusterMonitor',
+    summary: 'Watches SSP jobs and serves their state, training curves, and log tails to browser clients.',
+    description: 'Watches SSP jobs and serves their state, training curves, and log tails to browser clients. Polling runs on the Host without the model; nothing here enters a model request.',
+    methods: [
+      {
+        signature: '@Remote list(): ClusterWatchRow[]',
+        description: 'List every watched job, newest first.',
+        parameters: [],
+        returns: 'one row per watch.',
+      },
+      {
+        signature: '@Remote({ mode: \'stream\' }) async *follow(signal: AbortSignal): AsyncIterable<ClusterWatchRow[]>',
+        description: 'Follow the watch list: the current rows, then the complete list after each change.',
+        parameters: [{ name: 'signal', description: 'stream lifetime.' }],
+        returns: 'complete row lists.',
+      },
+      {
+        signature: '@Remote detail(watchId: ClusterWatchId): ClusterJobDetail',
+        description: 'Read one watched job with its curves, log tail, and job object.',
+        parameters: [{ name: 'watchId', description: 'watch id from a row.' }],
+        returns: 'the job detail.',
+      },
+      {
+        signature: '@Remote({ mode: \'stream\' }) async *followJob(watchId: ClusterWatchId, signal: AbortSignal): AsyncIterable<ClusterJobDetail>',
+        description: 'Follow one watched job: its detail now and after each change, ending when the watch is removed.',
+        parameters: [{ name: 'watchId', description: 'watch id from a row.' }, { name: 'signal', description: 'stream lifetime.' }],
+        returns: 'complete job details.',
+      },
+      {
+        signature: '@Remote async watch(request: ClusterWatchRequest): Promise<ClusterWatchRow>',
+        description: 'Start watching a job, or return the existing watch of the same job and workspace.',
+        parameters: [{ name: 'request', description: 'job name and optional workspace.' }],
+        returns: 'the watch row.',
+      },
+      {
+        signature: '@Remote async unwatch(watchId: ClusterWatchId): Promise<void>',
+        description: 'Stop watching a job and delete its stored curves; the SSP job itself is untouched.',
+        parameters: [{ name: 'watchId', description: 'watch id from a row.' }],
+        returns: 'after the record is deleted.',
+      },
+      {
+        signature: '@Remote async refresh(watchId: ClusterWatchId): Promise<void>',
+        description: 'Poll one job now, including a finished one, and wait for the result.',
+        parameters: [{ name: 'watchId', description: 'watch id from a row.' }],
+        returns: 'after the poll is stored.',
+      },
+    ],
+  },
+  {
     key: 'commands',
     summary: 'Human-command registry.',
     description: 'Human-command registry. Plain-context definitions are global; definitions registered through a command-injected child of an agent context shadow globals for that agent.',
@@ -2086,7 +2135,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         signature: 'async createJob(request: CreateScoJobRequest, signal?: AbortSignal): Promise<ScoJobCreation>',
         description: 'Create a training job from flags, or validate it with `dryRun`. Creation is not idempotent: an existing name fails in the CLI.',
         parameters: [{ name: 'request', description: 'job specification.' }, { name: 'signal', description: 'cancellation; a cancelled creation may still have been accepted remotely.' }],
-        returns: 'the merged `TrainingJob` for a dry run, otherwise the created name and CLI output.',
+        returns: 'the merged `TrainingJob` for a dry run, otherwise the created name and CLI output. A real creation emits `sco/job-created` after the CLI succeeds.',
       },
       {
         signature: 'async stopJobs(names: readonly string[], request: ScoWorkspaceRequest = {}, signal?: AbortSignal): Promise<ScoJobStop>',
@@ -4465,6 +4514,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [],
   },
   {
+    name: 'sco/job-created',
+    mode: 'emit',
+    signature: '\'sco/job-created\'(event: ScoJobCreated): void',
+    summary: 'The CLI accepted a non-dry-run job creation; observers such as job monitors start tracking it.',
+    description: 'The CLI accepted a non-dry-run job creation; observers such as job monitors start tracking it.',
+    parameters: [{ name: 'event', description: 'created job name and the workspace named on the command line.' }],
+  },
+  {
     name: 'session-telemetry/record',
     mode: 'waterfall',
     signature: '\'session-telemetry/record\'(record: SessionTelemetryRecord, next: () => SessionTelemetryRecord): SessionTelemetryRecord',
@@ -5039,6 +5096,38 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ClientArtifactBaseline',
     declaration: 'export interface ClientArtifactBaseline {\n    readonly path: string;\n    readonly mtimeMs: number;\n    readonly ctimeMs: number;\n    readonly size: number;\n}',
+  },
+  {
+    name: 'ClusterJobDetail',
+    declaration: 'export interface ClusterJobDetail extends ClusterWatchRow {\n    readonly series: readonly ClusterMetricSeries[];\n    readonly logTail: string;\n    readonly logError?: string;\n    readonly describe: string | null;\n}',
+  },
+  {
+    name: 'ClusterJobPhase',
+    declaration: 'export type ClusterJobPhase = \'pending\' | \'running\' | \'succeeded\' | \'failed\' | \'stopped\' | \'unknown\';',
+  },
+  {
+    name: 'ClusterMetricPoint',
+    declaration: 'export interface ClusterMetricPoint {\n    readonly step: number;\n    readonly value: number;\n}',
+  },
+  {
+    name: 'ClusterMetricSeries',
+    declaration: 'export interface ClusterMetricSeries {\n    readonly name: string;\n    readonly points: readonly ClusterMetricPoint[];\n}',
+  },
+  {
+    name: 'ClusterWatchId',
+    declaration: 'export type ClusterWatchId = Branded<\'ClusterWatchId\'>;',
+  },
+  {
+    name: 'ClusterWatchOrigin',
+    declaration: 'export type ClusterWatchOrigin = \'created\' | \'manual\';',
+  },
+  {
+    name: 'ClusterWatchRequest',
+    declaration: 'export interface ClusterWatchRequest {\n    readonly name: string;\n    readonly workspace?: string;\n}',
+  },
+  {
+    name: 'ClusterWatchRow',
+    declaration: 'export interface ClusterWatchRow {\n    readonly id: ClusterWatchId;\n    readonly name: string;\n    readonly workspace?: string;\n    readonly origin: ClusterWatchOrigin;\n    readonly phase: ClusterJobPhase;\n    readonly rawState: string | null;\n    readonly watchedAt: string;\n    readonly checkedAt?: string;\n    readonly createdAt?: string;\n    readonly startedAt?: string;\n    readonly finishedAt?: string;\n    readonly error?: string;\n    readonly step?: number;\n    readonly latest: Readonly<Record<string, number>>;\n}',
   },
   {
     name: 'CollectedOutput',
@@ -7007,6 +7096,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ScoImageType',
     declaration: 'export type ScoImageType = \'OFFICIAL\' | \'PRIVATE\' | \'THIRD_PARTY\';',
+  },
+  {
+    name: 'ScoJobCreated',
+    declaration: 'export interface ScoJobCreated {\n    name: string;\n    workspace?: string;\n}',
   },
   {
     name: 'ScoJobCreation',

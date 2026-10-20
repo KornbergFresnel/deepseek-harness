@@ -42,12 +42,15 @@ describe('SSP job operations through the sco CLI', () => {
 
   it('defers workspace and queue to the sco profile when neither request nor config names them', async () => {
     const { ctx, fake } = await gateway()
+    const created: unknown[] = []
+    ctx.on('sco/job-created', (event) => { created.push(event) })
     await ctx.sco.listJobs()
     await ctx.sco.describeJob('job-wbt')
     await ctx.sco.listWorkers('job-wbt')
     await ctx.sco.readLogs('job-wbt')
     await ctx.sco.stopJobs(['job-wbt'])
     await ctx.sco.createJob({ name: 'job-wbt', image: 'img', args: 'run' })
+    expect(created).toEqual([{ name: 'job-wbt' }])
     expect(await fake.calls()).toEqual([
       ['ssp', 'jobs', 'list', '--format=json'],
       ['ssp', 'jobs', 'describe', 'job-wbt', '--format=json'],
@@ -70,6 +73,8 @@ describe('SSP job operations through the sco CLI', () => {
 
   it('creates jobs from flags, returning the merged spec for a dry run and the CLI output otherwise', async () => {
     const { ctx, fake } = await gateway({ queueId: '/queues/default' })
+    const created: unknown[] = []
+    ctx.on('sco/job-created', (event) => { created.push(event) })
     const request = {
       name: 'job-wbt', displayName: 'wbt', image: 'registry/rlh:wbt', imageType: 'PRIVATE', args: 'python -m train --flag=-1',
       framework: 'PYTORCH_DDP', podCount: 1, gpuCount: 8, cpuCount: 64, memoryGib: 512, machineType: 'h1ls.rp.k60a', rdmaName: 'rdma0',
@@ -79,6 +84,7 @@ describe('SSP job operations through the sco CLI', () => {
     expect(await ctx.sco.createJob({ ...request, dryRun: true })).toEqual({ kind: 'dry-run', job: { name: 'job-wbt', spec: {} } })
     expect(await ctx.sco.createJob({ ...request, queueId: '/queues/override', workspace: 'team-a' }))
       .toEqual({ kind: 'created', name: 'job-wbt', output: 'created job-wbt' })
+    expect(created).toEqual([{ name: 'job-wbt', workspace: 'team-a' }])
     const flags = [
       'create', 'job-wbt', '--display-name=wbt', '--image=registry/rlh:wbt', '--image-type=PRIVATE', '--args=python -m train --flag=-1',
       '--framework=PYTORCH_DDP', '--pod-count=1', '--gpu-count=8', '--cpu-count=64', '--memory-gib=512', '--machine-type=h1ls.rp.k60a',

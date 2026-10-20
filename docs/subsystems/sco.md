@@ -10,6 +10,10 @@ The gateway lists jobs, reads one job, lists its workers, reads one round of its
 
 The CLI is not confined by the Session sandbox because it needs network access and its credential profile. The tool package's approval gate is the control for remote changes: with `confirmMutations` on, a submission without `dryRun` and every stop ask the user through [approval](approval.md) after other pre-execute listeners allow the call.
 
+## Job monitoring
+
+The experimental [`dsh-experimental-cluster-monitor`](../../packages/experimental/cluster-monitor/README.md) service provides `ctx.clusterMonitor`, which polls watched jobs through `ctx.sco` on Host timers and stores their state, log-derived training metrics, and log tail in the `cluster_monitor` storage domain. A successful non-dry-run creation emits `sco/job-created`, and the monitor watches that job unless `watchCreatedJobs` is off. The [`client-ui-cluster-monitor`](../../packages/experimental/client-ui-cluster-monitor/README.md) page reads the `cluster` Remote namespace. Monitoring never enters a model request.
+
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
 <a id="cordis-surface"></a>
@@ -17,6 +21,65 @@ The CLI is not confined by the Session sandbox because it needs network access a
 ## Cordis API
 
 Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnpm run verify-cordis-catalog` in doc-sync; regenerate with `pnpm run gen-cordis-catalog`) — the language sides differ only in locale-specific paired document paths. Signature blocks use a `ts cordis-catalog` fence and keep the original source JSDoc; dispatch modes are defined in the [primer](../cordis-primer.md#dispatch-modes), and the framework-inherited `ctx` API lives in [cordis-api/inherited.md](../cordis-api/inherited.md).
+
+<a id="ctxclustermonitor--clustermonitor"></a>
+
+### `ctx.clusterMonitor` — `ClusterMonitor`
+
+Watches SSP jobs and serves their state, training curves, and log tails to browser clients. Polling runs on the Host without the model; nothing here enters a model request.
+
+```ts cordis-catalog
+/**
+ * List every watched job, newest first.
+ * @returns one row per watch.
+ */
+@Remote list(): ClusterWatchRow[]
+
+/**
+ * Follow the watch list: the current rows, then the complete list after each change.
+ * @param signal - stream lifetime.
+ * @returns complete row lists.
+ */
+@Remote({ mode: 'stream' }) async *follow(signal: AbortSignal): AsyncIterable<ClusterWatchRow[]>
+
+/**
+ * Read one watched job with its curves, log tail, and job object.
+ * @param watchId - watch id from a row.
+ * @returns the job detail.
+ */
+@Remote detail(watchId: ClusterWatchId): ClusterJobDetail
+
+/**
+ * Follow one watched job: its detail now and after each change, ending when the watch is removed.
+ * @param watchId - watch id from a row.
+ * @param signal - stream lifetime.
+ * @returns complete job details.
+ */
+@Remote({ mode: 'stream' }) async *followJob(watchId: ClusterWatchId, signal: AbortSignal): AsyncIterable<ClusterJobDetail>
+
+/**
+ * Start watching a job, or return the existing watch of the same job and workspace.
+ * @param request - job name and optional workspace.
+ * @returns the watch row.
+ */
+@Remote async watch(request: ClusterWatchRequest): Promise<ClusterWatchRow>
+
+/**
+ * Stop watching a job and delete its stored curves; the SSP job itself is untouched.
+ * @param watchId - watch id from a row.
+ * @returns after the record is deleted.
+ */
+@Remote async unwatch(watchId: ClusterWatchId): Promise<void>
+
+/**
+ * Poll one job now, including a finished one, and wait for the result.
+ * @param watchId - watch id from a row.
+ * @returns after the poll is stored.
+ */
+@Remote async refresh(watchId: ClusterWatchId): Promise<void>
+```
+
+Source: [`packages/experimental/cluster-monitor/src/index.ts`](../../packages/experimental/cluster-monitor/src/index.ts)
 
 <a id="ctxsco--scogateway"></a>
 
@@ -66,6 +129,7 @@ async readLogs(name: string, request: ReadScoJobLogsRequest = {}, signal?: Abort
  * @param request - job specification.
  * @param signal - cancellation; a cancelled creation may still have been accepted remotely.
  * @returns the merged `TrainingJob` for a dry run, otherwise the created name and CLI output.
+ * A real creation emits `sco/job-created` after the CLI succeeds.
  */
 async createJob(request: CreateScoJobRequest, signal?: AbortSignal): Promise<ScoJobCreation>
 
@@ -77,6 +141,27 @@ async createJob(request: CreateScoJobRequest, signal?: AbortSignal): Promise<Sco
  * @returns the stopped names and CLI output.
  */
 async stopJobs(names: readonly string[], request: ScoWorkspaceRequest = {}, signal?: AbortSignal): Promise<ScoJobStop>
+```
+
+Source: [`packages/experimental/sco/src/index.ts`](../../packages/experimental/sco/src/index.ts)
+
+<a id="sco-events"></a>
+
+### `sco/*` events
+
+<a id="scojob-created--emit"></a>
+
+#### `sco/job-created` — emit
+
+The CLI accepted a non-dry-run job creation; observers such as job monitors start tracking it.
+
+```ts cordis-catalog
+/**
+ * The CLI accepted a non-dry-run job creation; observers such as job monitors start tracking it.
+ * @mode emit
+ * @param event - created job name and the workspace named on the command line.
+ */
+'sco/job-created'(event: ScoJobCreated): void
 ```
 
 Source: [`packages/experimental/sco/src/index.ts`](../../packages/experimental/sco/src/index.ts)

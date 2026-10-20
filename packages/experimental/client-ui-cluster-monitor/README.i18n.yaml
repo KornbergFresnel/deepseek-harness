@@ -1,0 +1,37 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/client-ui-cluster-monitor/README.md
+/:
+  en: 018070c0e69a9649
+  zh: 4dabe85ab371b73c
+/deepseek-ai-dsh-experimental-client-ui-cluster-monitor:
+  en: f248abc80ac90558
+  zh: 1ad772bb93c29962
+/deepseek-ai-dsh-experimental-client-ui-cluster-monitor/summary:
+  en: 759345a7cfd246e8
+  zh: 8cb0d17b77f28460
+/deepseek-ai-dsh-experimental-client-ui-cluster-monitor/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 2f8a621b991260a1
+/deepseek-ai-dsh-experimental-client-ui-cluster-monitor/use-this-package:
+  en: 81602ba8430a4bc8
+  zh: c0b46b481f014a0d
+/deepseek-ai-dsh-experimental-client-ui-cluster-monitor/understand-the-implementation:
+  en: 926386befc9c0226
+  zh: 0af00307441d86b6
+/deepseek-ai-dsh-experimental-client-ui-cluster-monitor/further-exploration:
+  en: ea87e3b64a691d4b
+  zh: 4de15ed663b71f17
+/deepseek-ai-dsh-experimental-client-ui-cluster-monitor/model-experience:
+  en: 9eec9142c7d5ac32
+  zh: 14e8ed033c458b5c
+/deepseek-ai-dsh-experimental-client-ui-cluster-monitor/model-experience/kv-cache-effect:
+  en: e277b74f9b721f5e
+  zh: 014c91db5c8570d0
+/deepseek-ai-dsh-experimental-client-ui-cluster-monitor/known-limitations-and-deferred-work:
+  en: 07d12b5f1c9e6dfe
+  zh: cf5a8e273efce739
+/deepseek-ai-dsh-experimental-client-ui-cluster-monitor/known-limitations-and-deferred-work/dev-note:
+  en: 0225ba087c5266f3
+  zh: 9c1d441532d6e9e6
