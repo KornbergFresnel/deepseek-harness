@@ -25,7 +25,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-将本服务与 SSP 网关和 `storageDomain` 提供方一起挂载，并为 Web 客户端添加页面包。
+将本服务与 SSP 网关和 `storageDomain` 提供方一起挂载，并为 Web 客户端添加页面包。[`sco.patch.yml`](sco.patch.yml) 会把网关、SSP 任务工具、本服务和页面加入 Web profile：填好 `sco` 路径和工作空间后，运行 `pnpm dsh web --patch packages/experimental/cluster-monitor/sco.patch.yml`。
 
 ```yaml
 - name: '@deepseek-ai/dsh-experimental-sco'

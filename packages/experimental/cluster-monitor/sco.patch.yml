@@ -1,0 +1,27 @@
+# 把 SenseCore SSP 训练任务工具和“集群任务”监控页面加进 dsh。
+# 填好下面的 sco 路径和工作空间后使用。
+# 用法：在 deepseek-harness 仓库根目录执行
+#   pnpm dsh web --patch packages/experimental/cluster-monitor/sco.patch.yml
+- insert:
+    - id: sco
+      name: '@deepseek-ai/dsh-experimental-sco'
+      config:
+        # sco 的绝对路径；sco 已在 PATH 里可以删掉这一行
+        command: /home/<你的用户名>/.sco/bin/sco
+        # 默认 SSP 工作空间；已用 sco config set ssp.workspace_name 设置可以删掉
+        workspace: <你的工作空间>
+        # 提交任务的默认队列（可选）
+        # queueId: /subscriptions/.../queues/...
+    - id: tool-sco
+      name: '@deepseek-ai/dsh-experimental-tool-sco'
+    # 定时用 sco 轮询关注的任务，解析训练曲线和日志；agent 提交的任务会自动关注
+    - id: cluster-monitor
+      name: '@deepseek-ai/dsh-experimental-cluster-monitor'
+      config:
+        # 任务运行中的轮询间隔（毫秒，最小 5000）
+        runningPollMs: 30000
+        # 排队或状态未知时的轮询间隔（毫秒，最小 5000）
+        pendingPollMs: 60000
+    # Web 侧边栏里的“集群任务”页面
+    - id: client-ui-cluster-monitor
+      name: '@deepseek-ai/dsh-experimental-client-ui-cluster-monitor'
