@@ -28,6 +28,7 @@ import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
 import WorkingDirectory from '@deepseek-ai/dsh-working-directory'
 import * as ToolWorkingDirectory from '@deepseek-ai/dsh-tool-working-directory'
 import * as ToolWorktree from '@deepseek-ai/dsh-experimental-tool-worktree'
+import * as ToolSco from '@deepseek-ai/dsh-experimental-tool-sco'
 import { AttachmentStore } from '@deepseek-ai/dsh-attachment'
 import type { ImageAttachmentLimits, ImageAttachmentRef, SaveImageAttachment, StoredImageAttachment } from '@deepseek-ai/dsh-attachment'
 import UserQuestionService from '@deepseek-ai/dsh-user-questions'
@@ -646,6 +647,18 @@ const TOOL_PACKAGES: ToolPackage[] = [
       await ctx.plugin(ToolWorktree)
     },
     note: 'Explicit experimental composition only. Creates a new branch and checkout from a pinned local commit under existing write permissions, then changes the Session directory. Leaving retains the branch and checkout.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-experimental-tool-sco',
+    dir: 'tool-sco',
+    source: 'packages/experimental/tool-sco/src/index.ts',
+    requires: ['ctx.tools', 'ctx.sco', 'ctx.approval for submission and stop'],
+    writes: ['tool/call', 'SenseCore SSP training jobs', 'tool/result'],
+    async mount(ctx) {
+      ctx.provide('sco', {})
+      await ctx.plugin(ToolSco, {})
+    },
+    note: 'Explicit experimental composition only. Runs the local sco CLI; submission without dryRun and stop ask the user unless confirmMutations is false.',
   },
   {
     pkg: '@deepseek-ai/dsh-tool-workflow',

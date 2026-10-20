@@ -1181,6 +1181,35 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-ptc-runtime-python -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-sco -->
+<a id="deepseek-aidsh-experimental-sco"></a>
+
+## `@deepseek-ai/dsh-experimental-sco`
+
+- `inject`: `subprocess`
+- `source`: [`packages/experimental/sco/src/index.ts:18`](../packages/experimental/sco/src/index.ts)
+
+```ts config-catalog
+/** Executable, sco profile selection, workspace and queue defaults, and subprocess limits. */
+export interface Config {
+  /** Executable name on PATH or absolute path of the `sco` CLI. */
+  command?: string
+  /** sco profile passed as `--profile`; omitted uses the CLI's active profile. */
+  profile?: string
+  /** Default SSP workspace passed as `--workspace-name`; omitted defers to profile `ssp.workspace_name`. */
+  workspace?: string
+  /** Default queue resource id for creation; omitted defers to profile `ssp.queue_id`. */
+  queueId?: string
+  /** Deadline in milliseconds for one CLI invocation. */
+  timeoutMs?: number
+  /** Subprocess termination grace in milliseconds. */
+  graceMs?: number
+  /** Maximum captured bytes per output stream. */
+  maxOutputBytes?: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-sco -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-speech-to-text -->
 <a id="deepseek-aidsh-experimental-speech-to-text"></a>
 
@@ -1281,6 +1310,23 @@ export interface Config {
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-tool-agent-team -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-tool-sco -->
+<a id="deepseek-aidsh-experimental-tool-sco"></a>
+
+## `@deepseek-ai/dsh-experimental-tool-sco`
+
+- `inject`: `tools` · `sco`
+- `source`: [`packages/experimental/tool-sco/src/index.ts:15`](../packages/experimental/tool-sco/src/index.ts)
+
+```ts config-catalog
+/** Approval behavior for remote mutations. */
+export interface Config {
+  /** Ask the user before `sco_job_create` (except dry runs) and `sco_job_stop`. */
+  confirmMutations?: boolean
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-tool-sco -->
 
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-translator -->
 <a id="deepseek-aidsh-experimental-translator"></a>

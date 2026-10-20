@@ -1,0 +1,10 @@
+# Bilingual-pair consistency record for sco.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/subsystems/sco.md
+/sensecore-training-jobs:
+  en: f6560d6e91329f06
+  zh: c45c9a68189c035e
+/sensecore-training-jobs/operations-and-authority:
+  en: 53e99f50f38eea00
+  zh: 2c0f8de931114692

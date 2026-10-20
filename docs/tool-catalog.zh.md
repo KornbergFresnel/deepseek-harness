@@ -49,6 +49,7 @@
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`、`owning Agent session` | `tool/call`、`todo/write`、`tool/result` | - | todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为检查清单。`allowParallelInProgress` 是没有默认值的必填项，因此本目录明确选择 `true`，对应描述允许同时存在多个 `in_progress` 项。选择 `false` 的部署会获得同一工具，但描述会要求只能有 1 个活动任务。 |
 | `@deepseek-ai/dsh-tool-working-directory` | `working_directory` | `ctx.tools`, `ctx.workingDirectory` | `tool/call`, `working-directory/change`, `user context for directory changes`, `tool/result` | - | 读取或改变调用方 Session 的目录。已有 shell 和进程保留自己的目录；原始元数据和权限根目录保持不变。 |
 | `@deepseek-ai/dsh-experimental-tool-worktree` | `create_worktree` | `ctx.tools`, `ctx.worktrees`, `a calling Agent` | `tool/call`, `Git branch and checkout`, `working-directory/change`, `tool/result` | - | 仅通过显式实验组合加载。在现有写权限下从固定的本地提交创建新分支与检出目录，再改变 Session 工作目录。离开时保留分支与检出目录。 |
+| `@deepseek-ai/dsh-experimental-tool-sco` | `sco_job_create`, `sco_job_describe`, `sco_job_list`, `sco_job_logs`, `sco_job_stop`, `sco_job_workers` | `ctx.tools`, `ctx.sco`, `ctx.approval for submission and stop` | `tool/call`, `SenseCore SSP training jobs`, `tool/result` | - | 仅通过显式实验组合加载。运行本地 sco CLI；除非 confirmMutations 为 false，否则未设置 dryRun 的提交和停止都会询问用户。 |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`、`ctx.workflowEngine`、`ctx.systemPrompt`、`a calling Agent (exec.agent parents the script children)` | `tool/call`、`tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-workspace-dependencies` | `load_workspace_dependencies` | `ctx.tools` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`、`web_search` | `ctx.tools`、`ctx.web`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可见 schema 在更换后端时保持稳定。 |
@@ -2666,6 +2667,306 @@ todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为
 来源：[`packages/experimental/tool-worktree/src/index.ts`](../packages/experimental/tool-worktree/src/index.ts)
 
 仅通过显式实验组合加载。在现有写权限下从固定的本地提交创建新分支与检出目录，再改变 Session 工作目录。离开时保留分支与检出目录。
+
+<a id="deepseek-aidsh-experimental-tool-sco"></a>
+
+## `@deepseek-ai/dsh-experimental-tool-sco`
+
+### `sco_job_create`
+
+提交 SenseCore SSP 训练任务。先用 dryRun 校验并查看合并后的 TrainingJob；正式提交会询问用户，任务名已存在时失败。GPU 任务需要 machineType；纯 CPU 任务需要 cpuCount 和 memoryGib。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "New job name: job- prefix, lowercase letters, digits, and hyphens, at most 32 characters."
+    },
+    "displayName": {
+      "type": "string",
+      "description": "Console display name."
+    },
+    "image": {
+      "type": "string",
+      "description": "Container image reference."
+    },
+    "imageType": {
+      "type": "string",
+      "enum": [
+        "OFFICIAL",
+        "PRIVATE",
+        "THIRD_PARTY"
+      ]
+    },
+    "args": {
+      "type": "string",
+      "description": "Startup command, run with bash -c."
+    },
+    "framework": {
+      "type": "string",
+      "description": "Defaults to PYTORCH_DDP.",
+      "enum": [
+        "PYTORCH_DDP",
+        "MPI",
+        "RAY_JOB",
+        "TENSORFLOW_PS",
+        "FRAMEWORK_CUSTOM"
+      ]
+    },
+    "podCount": {
+      "type": "integer",
+      "description": "Pods. Defaults to 1."
+    },
+    "gpuCount": {
+      "type": "integer",
+      "description": "GPUs per pod. Defaults to 0."
+    },
+    "cpuCount": {
+      "type": "integer",
+      "description": "CPU cores per pod."
+    },
+    "memoryGib": {
+      "type": "integer",
+      "description": "Memory per pod in GiB."
+    },
+    "machineType": {
+      "type": "string",
+      "description": "Queue machine type code; comma-separate several."
+    },
+    "rdmaName": {
+      "type": "string"
+    },
+    "shmSizeGib": {
+      "type": "integer",
+      "description": "/dev/shm per pod in GiB, below memoryGib."
+    },
+    "queueId": {
+      "type": "string",
+      "description": "Full queue resource id. Omit to use the configured default."
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "NORMAL",
+        "HIGH",
+        "HIGHEST"
+      ]
+    },
+    "env": {
+      "type": "object",
+      "description": "Environment variables as string values.",
+      "additionalProperties": true
+    },
+    "volumeMounts": {
+      "type": "array",
+      "description": "PV_AFS:<volume-uuid>:<mount-path>[:<subdir>] or PV_AOSS:<bucket>:<mount-path>:<endpoint>[:<prefix>].",
+      "items": {
+        "type": "string"
+      }
+    },
+    "maxAttempts": {
+      "type": "integer",
+      "description": "Retries after failure."
+    },
+    "enableQueuing": {
+      "type": "boolean",
+      "description": "Wait in queue when quota is insufficient."
+    },
+    "tensorboardLogPath": {
+      "type": "string",
+      "description": "TensorBoard log path under a mounted AFS volume."
+    },
+    "workspace": {
+      "type": "string",
+      "description": "SSP workspace name. Omit to use the configured default."
+    },
+    "dryRun": {
+      "type": "boolean",
+      "description": "Validate and return the merged TrainingJob without submitting."
+    }
+  },
+  "required": [
+    "name",
+    "image",
+    "args"
+  ]
+}
+```
+
+来源：[`packages/experimental/tool-sco/src/index.ts`](../packages/experimental/tool-sco/src/index.ts)
+
+### `sco_job_describe`
+
+读取一个 SSP 训练任务完整的 TrainingJob 对象，包括状态、规格和时间戳。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Job name, for example job-wbt-g1-0420."
+    },
+    "workspace": {
+      "type": "string",
+      "description": "SSP workspace name. Omit to use the configured default."
+    }
+  },
+  "required": [
+    "name"
+  ]
+}
+```
+
+来源：[`packages/experimental/tool-sco/src/index.ts`](../packages/experimental/tool-sco/src/index.ts)
+
+### `sco_job_list`
+
+列出工作空间中的 SenseCore SSP 训练任务，除非 orderBy 另有指定，否则最新的在前。返回集群的 JSON 列表，包含每个任务的名称、状态和队列。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "workspace": {
+      "type": "string",
+      "description": "SSP workspace name. Omit to use the configured default."
+    },
+    "pageSize": {
+      "type": "integer",
+      "description": "Jobs per page, 1 to 100. Defaults to 10."
+    },
+    "skip": {
+      "type": "integer",
+      "description": "Jobs to skip for paging."
+    },
+    "filters": {
+      "type": "array",
+      "description": "AND-combined filters. name and display_name match by prefix; state, queue_id, priority, and framework match exactly.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "field": {
+            "type": "string",
+            "enum": [
+              "name",
+              "display_name",
+              "state",
+              "queue_id",
+              "priority",
+              "framework"
+            ]
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "value"
+        ]
+      }
+    },
+    "orderBy": {
+      "type": "string",
+      "description": "created_at or duration, prefixed by - for descending; comma-separate several. Defaults to -created_at."
+    }
+  }
+}
+```
+
+来源：[`packages/experimental/tool-sco/src/index.ts`](../packages/experimental/tool-sco/src/index.ts)
+
+### `sco_job_logs`
+
+读取一次运行中 SSP 训练任务的当前日志，不持续跟随。省略 worker 时读取全部 Worker。日志过长时只保留尾部并设置 truncated。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Job name, for example job-wbt-g1-0420."
+    },
+    "worker": {
+      "type": "string",
+      "description": "Worker name from sco_job_workers."
+    },
+    "container": {
+      "type": "string",
+      "description": "Container name. Omit for the main container."
+    },
+    "workspace": {
+      "type": "string",
+      "description": "SSP workspace name. Omit to use the configured default."
+    }
+  },
+  "required": [
+    "name"
+  ]
+}
+```
+
+来源：[`packages/experimental/tool-sco/src/index.ts`](../packages/experimental/tool-sco/src/index.ts)
+
+### `sco_job_stop`
+
+停止一个或多个 SSP 训练任务。会先询问用户。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "names": {
+      "type": "array",
+      "description": "1 to 100 job names.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "workspace": {
+      "type": "string",
+      "description": "SSP workspace name. Omit to use the configured default."
+    }
+  },
+  "required": [
+    "names"
+  ]
+}
+```
+
+来源：[`packages/experimental/tool-sco/src/index.ts`](../packages/experimental/tool-sco/src/index.ts)
+
+### `sco_job_workers`
+
+列出 SSP 训练任务当前的 Worker。Worker 名称用于在 sco_job_logs 中选择日志。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Job name, for example job-wbt-g1-0420."
+    },
+    "workspace": {
+      "type": "string",
+      "description": "SSP workspace name. Omit to use the configured default."
+    }
+  },
+  "required": [
+    "name"
+  ]
+}
+```
+
+来源：[`packages/experimental/tool-sco/src/index.ts`](../packages/experimental/tool-sco/src/index.ts)
+
+仅通过显式实验组合加载。运行本地 sco CLI；除非 confirmMutations 为 false，否则未设置 dryRun 的提交和停止都会询问用户。
 
 <a id="deepseek-aidsh-tool-workflow"></a>
 
