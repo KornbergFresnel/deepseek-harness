@@ -49,6 +49,28 @@ describe('dsh-base bundle', () => {
     expect(manifest.dependencies).toHaveProperty('@deepseek-ai/dsh-web-fetch-http')
   })
 
+  it('identifies the desktop profile as the current native Platform client', () => {
+    const root = fileURLToPath(new URL('..', import.meta.url))
+    const parsed = yaml.load(
+      readFileSync(resolve(root, 'cordis.patch.yml'), 'utf8'),
+      { schema: entryListSchema },
+    )
+    if (!Array.isArray(parsed)) throw new TypeError('base patch must parse to a patch list')
+    const rows = parsed.flatMap((patch): Record<string, unknown>[] =>
+      typeof patch === 'object' && patch !== null
+        ? (patch as { insert?: Record<string, unknown>[] }).insert ?? []
+        : [],
+    )
+    const expression = (rows.find(row => row.id === 'deepseek-account')?.config as
+      { desktopPlatform?: { __jsExpr?: string } } | undefined)?.desktopPlatform?.__jsExpr
+    if (expression === undefined) throw new Error('deepseek-account must gate its desktop identity')
+    for (const platform of ['darwin', 'win32', 'linux'] as const) {
+      const profile = (name: string) => ({ get: (key: string) => key === 'profileContext' ? { name } : undefined })
+      expect(evaluate({ ...profile('desktop'), process: { platform } }, expression)).toBe(platform)
+      expect(evaluate({ ...profile('web'), process: { platform } }, expression)).toBeNull()
+    }
+  })
+
   it('gates each shell stack by platform with a symmetric disabled expression', () => {
     const root = fileURLToPath(new URL('..', import.meta.url))
     const parsed = yaml.load(

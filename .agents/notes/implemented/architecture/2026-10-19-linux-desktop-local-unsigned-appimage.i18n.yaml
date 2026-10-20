@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for 2026-10-19-linux-desktop-local-unsigned-appimage.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-10-19-linux-desktop-local-unsigned-appimage.md
+/agent-note-linux-desktop-builds-are-local-unsigned-appimages:
+  en: 4cbaea112b7c72cf
+  zh: 1956fe58b8fa797e
+/agent-note-linux-desktop-builds-are-local-unsigned-appimages/problem:
+  en: f76cb57f3f5f0d41
+  zh: 6b79e768bb1d5777
+/agent-note-linux-desktop-builds-are-local-unsigned-appimages/decision:
+  en: 6c6235461c9263b4
+  zh: d3aa7f5a139d4d5a
+/agent-note-linux-desktop-builds-are-local-unsigned-appimages/alternatives-considered:
+  en: 5142a995c8b90ba0
+  zh: 429d573c58e3b8c9
+/agent-note-linux-desktop-builds-are-local-unsigned-appimages/consequences:
+  en: ef3aa4d81a64a0f3
+  zh: dc367bc3d1dd8adc

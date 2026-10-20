@@ -203,6 +203,17 @@ describe('the platform chains', () => {
     expect(probeLandlock).toHaveBeenCalledWith(launcher)
   })
 
+  it('linux runs the unpacked Landlock launcher from a packaged ASAR path', async () => {
+    const probeBwrap = vi.fn(() => false)
+    const probeLandlock = vi.fn(() => 'full' as const)
+    const packaged = '/opt/DeepSeek Harness/resources/app.asar/dsh/node_modules/@deepseek-ai/node-addon-system-linux-x64/bin/landlock-run'
+    const unpacked = '/opt/DeepSeek Harness/resources/app.asar.unpacked/dsh/node_modules/@deepseek-ai/node-addon-system-linux-x64/bin/landlock-run'
+    const { sandbox } = await setup({}, { platform: 'linux', probeBwrap, probeLandlock, landlockLauncher: packaged })
+    const confined = await sandbox.confine(['true'], RO)
+    expect(probeLandlock).toHaveBeenCalledWith(unpacked)
+    expect(confined.argv[0]).toBe(unpacked)
+  })
+
   it('darwin selects its sole candidate WITHOUT probing: nothing to arbitrate', async () => {
     // The safety property moves to execution time: an unusable sandbox-exec
     // refuses to run the command, and the wrap's runnerFailureRules let

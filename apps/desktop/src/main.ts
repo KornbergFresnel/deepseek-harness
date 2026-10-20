@@ -1,4 +1,5 @@
 import type { ProductEventMap, ProductEvent } from '@deepseek-ai/dsh-client-product-analytics/types'
+import type { DesktopClientPlatform } from '@deepseek-ai/dsh-deepseek-account'
 import { WINDOWS_TITLEBAR_HEIGHT } from './windows-layout.ts'
 /** Electron shell: desktop project ownership, custom protocol, windows, and lifecycle. */
 
@@ -189,6 +190,22 @@ function developmentHostInspectPort(enabled: boolean): number | undefined {
  */
 function chromeFallbackFill(): string {
   return nativeTheme.shouldUseDarkColors ? '#1b1b1c' : '#f9fafb'
+}
+
+/**
+ * Select the native Platform client identity for this Desktop process.
+ * @returns the operating system reported in Platform client headers.
+ * @throws Error when the process runs on an unsupported operating system.
+ */
+function desktopClientPlatform(): DesktopClientPlatform {
+  switch (process.platform) {
+    case 'darwin':
+    case 'win32':
+    case 'linux':
+      return process.platform
+    default:
+      throw new Error(`dsh desktop: unsupported platform ${process.platform}`)
+  }
 }
 
 /**
@@ -441,7 +458,7 @@ async function main(): Promise<void> {
     return next.promise
   }
   const platformView = new DesktopPlatformView(join(app.getAppPath(), 'lib', 'preload-platform-account.cjs'),
-    () => locale.id === 'zh-CN' ? 'zh_CN' : 'en_US', process.platform === 'win32' ? 'win32' : 'darwin')
+    () => locale.id === 'zh-CN' ? 'zh_CN' : 'en_US', desktopClientPlatform())
   const backend = new DesktopBackendController((onFailure) => {
     const hostInspectPort = developmentHostInspectPort(development)
     const host = new DesktopHostProcess(resources.node, resources.dsh, activeProject,
@@ -1078,6 +1095,9 @@ async function main(): Promise<void> {
     // Closing hides: the page and the Host keep running, and the next show resumes the same document.
     window.on('close', (event) => {
       if (quitting || shellInstallerOwnsQuit || sessionEnding) return
+      // Windows and macOS leave a tray or Dock icon to reopen the hidden window; Linux has neither,
+      // so closing asks to quit through the ordinary confirmation and keeps the window on cancel.
+      if (process.platform === 'linux') { event.preventDefault(); app.quit(); return }
       event.preventDefault()
       if (updateDialog.isOpen) { updateDialog.focus(); return }
       const hide = (): void => {

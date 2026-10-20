@@ -552,7 +552,10 @@ export class LocalSandboxProvider extends SandboxProvider {
 
   /** The Landlock launcher to probe and exec (test hook over the resolved one). */
   private landlockLauncher(): string {
-    return this.internals.landlockLauncher ?? landlockLauncherPath()
+    const launcher = this.internals.landlockLauncher ?? landlockLauncherPath()
+    // child_process cannot execute a file inside Electron's ASAR archive; the matching platform
+    // package is unpacked beside it, so resolve the executable from app.asar.unpacked.
+    return launcher.replace(/\.asar(?=[\\/])/u, '.asar.unpacked')
   }
 
   /** The `sandbox-exec` executable to probe and exec (test hook over the system one). */
