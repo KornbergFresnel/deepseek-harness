@@ -115,6 +115,7 @@ export const SERVICE_PAGE: Record<string, string> = {
   sessionProjections: 'session-projection.md',
   workingDirectory: 'working-directory.md',
   worktrees: 'worktrees.md',
+  sco: 'sco.md',
   sessionController: 'session.md',
   sessionSkillCatalog: 'skills.md',
   sessions: 'session.md',
@@ -870,6 +871,13 @@ export const FOUNDATION_TYPE_NAMES: ReadonlySet<string> = new Set([
 
 /** Project types deliberately documented outside the subsystems catalog. */
 export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
+  ListScoJobsRequest: 'SSP job records are owned by packages/experimental/sco/src/types.ts',
+  ScoWorkspaceRequest: 'SSP job records are owned by packages/experimental/sco/src/types.ts',
+  ReadScoJobLogsRequest: 'SSP job records are owned by packages/experimental/sco/src/types.ts',
+  ScoJobLogs: 'SSP job records are owned by packages/experimental/sco/src/types.ts',
+  CreateScoJobRequest: 'SSP job records are owned by packages/experimental/sco/src/types.ts',
+  ScoJobCreation: 'SSP job records are owned by packages/experimental/sco/src/types.ts',
+  ScoJobStop: 'SSP job records are owned by packages/experimental/sco/src/types.ts',
   ProductEvent: 'Desktop event fields are owned by packages/client/product-analytics/README.md and src/events.ts',
   ConnectionFetchHandler: 'shared Fetch dispatch is owned by packages/client/connection/src/rpc.ts',
   ConnectionRequestRejection: 'transport rejection status is owned by packages/client/connection/src/rpc.ts',

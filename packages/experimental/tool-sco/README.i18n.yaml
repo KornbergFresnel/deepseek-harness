@@ -1,0 +1,46 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/tool-sco/README.md
+/:
+  en: 584bbdde3cac9504
+  zh: 4a77d53a1edfda06
+/deepseek-ai-dsh-experimental-tool-sco:
+  en: 0e59cb1232364505
+  zh: bf6bfd5f27ba91d8
+/deepseek-ai-dsh-experimental-tool-sco/summary:
+  en: 7910e09bbf1cae04
+  zh: 28961ba8328172cd
+/deepseek-ai-dsh-experimental-tool-sco/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 2f8a621b991260a1
+/deepseek-ai-dsh-experimental-tool-sco/use-this-package:
+  en: 334c83d96b208da7
+  zh: 68b35b39554212c4
+/deepseek-ai-dsh-experimental-tool-sco/understand-the-implementation:
+  en: cb089cf2f3efccfa
+  zh: 98bf05bbf14a40c1
+/deepseek-ai-dsh-experimental-tool-sco/further-exploration:
+  en: 94ef8c85aa2a0fd4
+  zh: ebec7bce0c4d1301
+/deepseek-ai-dsh-experimental-tool-sco/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-experimental-tool-sco/model-experience/ssp-job-tools:
+  en: 125971f953784716
+  zh: 609916f8f659d519
+/deepseek-ai-dsh-experimental-tool-sco/model-experience/ssp-job-tools/what-the-model-sees:
+  en: 1b830bf90c650583
+  zh: 91f8d9a3a0b1f888
+/deepseek-ai-dsh-experimental-tool-sco/model-experience/ssp-job-tools/token-effect:
+  en: 4f4fb61fa76da99b
+  zh: 0d6a07f51f40f387
+/deepseek-ai-dsh-experimental-tool-sco/model-experience/ssp-job-tools/kv-cache-effect:
+  en: 67cf12ffe2e88e13
+  zh: 98bb6baf7f93a74f
+/deepseek-ai-dsh-experimental-tool-sco/known-limitations-and-deferred-work:
+  en: 2947ca5124408af6
+  zh: 1502d6227c81f8f2
+/deepseek-ai-dsh-experimental-tool-sco/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: e88aeb617ffb74ea

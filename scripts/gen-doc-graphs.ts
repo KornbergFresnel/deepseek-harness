@@ -180,6 +180,15 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Explicit experimental creation from a pinned local commit. Existing write permissions govern checkout and shared Git metadata; the working-directory service owns the resulting Session directory.',
   },
   {
+    key: 'sco',
+    pkg: 'experimental-sco',
+    title: 'SenseCore SSP training jobs',
+    mode: 'seam',
+    implementations: ['experimental-sco'],
+    consumers: ['experimental-tool-sco'],
+    note: 'Explicit experimental gateway to the local sco CLI. Runs unconfined because the CLI needs network access and its credential profile; the tool package asks before submission and stop.',
+  },
+  {
     key: 'workingDirectory',
     pkg: 'working-directory',
     title: 'Session working directory',

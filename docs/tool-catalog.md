@@ -45,6 +45,7 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`, `owning Agent session` | `tool/call`, `todo/write`, `tool/result` | - | todo_write is session-owned state; UIs render the latest todo/write event as a checklist. `allowParallelInProgress` is required with no default, so the catalog states its choice: `true`, whose description invites several `in_progress` items. A deployment choosing `false` receives the same tool with a description asking for exactly one active task. |
 | `@deepseek-ai/dsh-tool-working-directory` | `working_directory` | `ctx.tools`, `ctx.workingDirectory` | `tool/call`, `working-directory/change`, `user context for directory changes`, `tool/result` | - | Reads or changes the calling Session directory. Existing shells and processes retain their own directories; origin metadata and permission roots stay fixed. |
 | `@deepseek-ai/dsh-experimental-tool-worktree` | `create_worktree` | `ctx.tools`, `ctx.worktrees`, `a calling Agent` | `tool/call`, `Git branch and checkout`, `working-directory/change`, `tool/result` | - | Explicit experimental composition only. Creates a new branch and checkout from a pinned local commit under existing write permissions, then changes the Session directory. Leaving retains the branch and checkout. |
+| `@deepseek-ai/dsh-experimental-tool-sco` | `sco_job_create`, `sco_job_describe`, `sco_job_list`, `sco_job_logs`, `sco_job_stop`, `sco_job_workers` | `ctx.tools`, `ctx.sco`, `ctx.approval for submission and stop` | `tool/call`, `SenseCore SSP training jobs`, `tool/result` | - | Explicit experimental composition only. Runs the local sco CLI; submission without dryRun and stop ask the user unless confirmMutations is false. |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`, `ctx.workflowEngine`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents the script children)` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-workspace-dependencies` | `load_workspace_dependencies` | `ctx.tools` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`, `web_search` | `ctx.tools`, `ctx.web`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps. |
@@ -2659,6 +2660,306 @@ Create a new Git branch and worktree from a local commit, branch, or tag, then c
 Source: [`packages/experimental/tool-worktree/src/index.ts`](../packages/experimental/tool-worktree/src/index.ts)
 
 Explicit experimental composition only. Creates a new branch and checkout from a pinned local commit under existing write permissions, then changes the Session directory. Leaving retains the branch and checkout.
+
+<a id="deepseek-aidsh-experimental-tool-sco"></a>
+
+## `@deepseek-ai/dsh-experimental-tool-sco`
+
+### `sco_job_create`
+
+Submit a SenseCore SSP training job. Run with dryRun first to validate and see the merged TrainingJob; a real submission asks the user and fails if the name exists. GPU jobs need machineType; CPU-only jobs need cpuCount and memoryGib.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "New job name: job- prefix, lowercase letters, digits, and hyphens, at most 32 characters."
+    },
+    "displayName": {
+      "type": "string",
+      "description": "Console display name."
+    },
+    "image": {
+      "type": "string",
+      "description": "Container image reference."
+    },
+    "imageType": {
+      "type": "string",
+      "enum": [
+        "OFFICIAL",
+        "PRIVATE",
+        "THIRD_PARTY"
+      ]
+    },
+    "args": {
+      "type": "string",
+      "description": "Startup command, run with bash -c."
+    },
+    "framework": {
+      "type": "string",
+      "description": "Defaults to PYTORCH_DDP.",
+      "enum": [
+        "PYTORCH_DDP",
+        "MPI",
+        "RAY_JOB",
+        "TENSORFLOW_PS",
+        "FRAMEWORK_CUSTOM"
+      ]
+    },
+    "podCount": {
+      "type": "integer",
+      "description": "Pods. Defaults to 1."
+    },
+    "gpuCount": {
+      "type": "integer",
+      "description": "GPUs per pod. Defaults to 0."
+    },
+    "cpuCount": {
+      "type": "integer",
+      "description": "CPU cores per pod."
+    },
+    "memoryGib": {
+      "type": "integer",
+      "description": "Memory per pod in GiB."
+    },
+    "machineType": {
+      "type": "string",
+      "description": "Queue machine type code; comma-separate several."
+    },
+    "rdmaName": {
+      "type": "string"
+    },
+    "shmSizeGib": {
+      "type": "integer",
+      "description": "/dev/shm per pod in GiB, below memoryGib."
+    },
+    "queueId": {
+      "type": "string",
+      "description": "Full queue resource id. Omit to use the configured default."
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "NORMAL",
+        "HIGH",
+        "HIGHEST"
+      ]
+    },
+    "env": {
+      "type": "object",
+      "description": "Environment variables as string values.",
+      "additionalProperties": true
+    },
+    "volumeMounts": {
+      "type": "array",
+      "description": "PV_AFS:<volume-uuid>:<mount-path>[:<subdir>] or PV_AOSS:<bucket>:<mount-path>:<endpoint>[:<prefix>].",
+      "items": {
+        "type": "string"
+      }
+    },
+    "maxAttempts": {
+      "type": "integer",
+      "description": "Retries after failure."
+    },
+    "enableQueuing": {
+      "type": "boolean",
+      "description": "Wait in queue when quota is insufficient."
+    },
+    "tensorboardLogPath": {
+      "type": "string",
+      "description": "TensorBoard log path under a mounted AFS volume."
+    },
+    "workspace": {
+      "type": "string",
+      "description": "SSP workspace name. Omit to use the configured default."
+    },
+    "dryRun": {
+      "type": "boolean",
+      "description": "Validate and return the merged TrainingJob without submitting."
+    }
+  },
+  "required": [
+    "name",
+    "image",
+    "args"
+  ]
+}
+```
+
+Source: [`packages/experimental/tool-sco/src/index.ts`](../packages/experimental/tool-sco/src/index.ts)
+
+### `sco_job_describe`
+
+Read one SSP training job's full TrainingJob object, including state, spec, and timestamps.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Job name, for example job-wbt-g1-0420."
+    },
+    "workspace": {
+      "type": "string",
+      "description": "SSP workspace name. Omit to use the configured default."
+    }
+  },
+  "required": [
+    "name"
+  ]
+}
+```
+
+Source: [`packages/experimental/tool-sco/src/index.ts`](../packages/experimental/tool-sco/src/index.ts)
+
+### `sco_job_list`
+
+List SenseCore SSP training jobs in a workspace, newest first unless orderBy says otherwise. Returns the cluster's JSON listing with each job's name, state, and queue.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "workspace": {
+      "type": "string",
+      "description": "SSP workspace name. Omit to use the configured default."
+    },
+    "pageSize": {
+      "type": "integer",
+      "description": "Jobs per page, 1 to 100. Defaults to 10."
+    },
+    "skip": {
+      "type": "integer",
+      "description": "Jobs to skip for paging."
+    },
+    "filters": {
+      "type": "array",
+      "description": "AND-combined filters. name and display_name match by prefix; state, queue_id, priority, and framework match exactly.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "field": {
+            "type": "string",
+            "enum": [
+              "name",
+              "display_name",
+              "state",
+              "queue_id",
+              "priority",
+              "framework"
+            ]
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "value"
+        ]
+      }
+    },
+    "orderBy": {
+      "type": "string",
+      "description": "created_at or duration, prefixed by - for descending; comma-separate several. Defaults to -created_at."
+    }
+  }
+}
+```
+
+Source: [`packages/experimental/tool-sco/src/index.ts`](../packages/experimental/tool-sco/src/index.ts)
+
+### `sco_job_logs`
+
+Read the current logs of a running SSP training job once, without following. Omit worker to read every worker. Long logs keep only the tail and set truncated.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Job name, for example job-wbt-g1-0420."
+    },
+    "worker": {
+      "type": "string",
+      "description": "Worker name from sco_job_workers."
+    },
+    "container": {
+      "type": "string",
+      "description": "Container name. Omit for the main container."
+    },
+    "workspace": {
+      "type": "string",
+      "description": "SSP workspace name. Omit to use the configured default."
+    }
+  },
+  "required": [
+    "name"
+  ]
+}
+```
+
+Source: [`packages/experimental/tool-sco/src/index.ts`](../packages/experimental/tool-sco/src/index.ts)
+
+### `sco_job_stop`
+
+Stop one or more SSP training jobs. Asks the user first.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "names": {
+      "type": "array",
+      "description": "1 to 100 job names.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "workspace": {
+      "type": "string",
+      "description": "SSP workspace name. Omit to use the configured default."
+    }
+  },
+  "required": [
+    "names"
+  ]
+}
+```
+
+Source: [`packages/experimental/tool-sco/src/index.ts`](../packages/experimental/tool-sco/src/index.ts)
+
+### `sco_job_workers`
+
+List an SSP training job's current workers. Worker names select logs in sco_job_logs.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Job name, for example job-wbt-g1-0420."
+    },
+    "workspace": {
+      "type": "string",
+      "description": "SSP workspace name. Omit to use the configured default."
+    }
+  },
+  "required": [
+    "name"
+  ]
+}
+```
+
+Source: [`packages/experimental/tool-sco/src/index.ts`](../packages/experimental/tool-sco/src/index.ts)
+
+Explicit experimental composition only. Runs the local sco CLI; submission without dryRun and stop ask the user unless confirmMutations is false.
 
 <a id="deepseek-aidsh-tool-workflow"></a>
 

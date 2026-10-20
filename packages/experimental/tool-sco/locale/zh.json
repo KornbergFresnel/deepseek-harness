@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "SenseCore 训练任务",
+    "description": "让 agent 通过本地 sco CLI 查看、提交和停止 SenseCore SSP 训练任务。"
+  }
+}

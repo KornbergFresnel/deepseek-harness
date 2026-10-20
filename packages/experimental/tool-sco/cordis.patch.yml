@@ -1,0 +1,5 @@
+- insert:
+    - id: sco
+      name: '@deepseek-ai/dsh-experimental-sco'
+    - id: tool-sco
+      name: '@deepseek-ai/dsh-experimental-tool-sco'

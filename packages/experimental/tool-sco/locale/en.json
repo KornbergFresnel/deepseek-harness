@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "SenseCore Training Jobs",
+    "description": "Let the agent list, inspect, submit, and stop SenseCore SSP training jobs through your local sco CLI."
+  }
+}

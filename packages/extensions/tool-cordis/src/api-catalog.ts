@@ -2054,6 +2054,49 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'sco',
+    summary: 'Adapts `sco ssp jobs` subcommands to typed operations.',
+    description: 'Adapts `sco ssp jobs` subcommands to typed operations. Every invocation is a literal argv with `--flag=value` tokens, run without a shell or sandbox confinement because the CLI needs network access and its credential profile.',
+    methods: [
+      {
+        signature: 'async listJobs(request: ListScoJobsRequest = {}, signal?: AbortSignal): Promise<JsonValue>',
+        description: 'List training jobs.',
+        parameters: [{ name: 'request', description: 'workspace, paging, filters, and sort keys.' }, { name: 'signal', description: 'cancellation.' }],
+        returns: 'the CLI\'s JSON listing.',
+      },
+      {
+        signature: 'async describeJob(name: string, request: ScoWorkspaceRequest = {}, signal?: AbortSignal): Promise<JsonValue>',
+        description: 'Read one job\'s complete `TrainingJob` object, including state.',
+        parameters: [{ name: 'name', description: 'job name.' }, { name: 'request', description: 'workspace.' }, { name: 'signal', description: 'cancellation.' }],
+        returns: 'the CLI\'s JSON job object.',
+      },
+      {
+        signature: 'async listWorkers(name: string, request: ScoWorkspaceRequest = {}, signal?: AbortSignal): Promise<JsonValue>',
+        description: 'List one job\'s current workers; worker names select logs.',
+        parameters: [{ name: 'name', description: 'job name.' }, { name: 'request', description: 'workspace.' }, { name: 'signal', description: 'cancellation.' }],
+        returns: 'the CLI\'s JSON worker listing.',
+      },
+      {
+        signature: 'async readLogs(name: string, request: ReadScoJobLogsRequest = {}, signal?: AbortSignal): Promise<ScoJobLogs>',
+        description: 'Read one round of a running job\'s logs without following.',
+        parameters: [{ name: 'name', description: 'job name.' }, { name: 'request', description: 'workspace, worker, and container.' }, { name: 'signal', description: 'cancellation.' }],
+        returns: 'the retained log text and whether it was truncated to the output limit.',
+      },
+      {
+        signature: 'async createJob(request: CreateScoJobRequest, signal?: AbortSignal): Promise<ScoJobCreation>',
+        description: 'Create a training job from flags, or validate it with `dryRun`. Creation is not idempotent: an existing name fails in the CLI.',
+        parameters: [{ name: 'request', description: 'job specification.' }, { name: 'signal', description: 'cancellation; a cancelled creation may still have been accepted remotely.' }],
+        returns: 'the merged `TrainingJob` for a dry run, otherwise the created name and CLI output.',
+      },
+      {
+        signature: 'async stopJobs(names: readonly string[], request: ScoWorkspaceRequest = {}, signal?: AbortSignal): Promise<ScoJobStop>',
+        description: 'Stop up to 100 training jobs.',
+        parameters: [{ name: 'names', description: 'job names.' }, { name: 'request', description: 'workspace.' }, { name: 'signal', description: 'cancellation; a cancelled stop may still have been applied remotely.' }],
+        returns: 'the stopped names and CLI output.',
+      },
+    ],
+  },
+  {
     key: 'sessionController',
     summary: 'Host service backing the generated `ctx.remote.session` namespace.',
     description: 'Host service backing the generated `ctx.remote.session` namespace.',
@@ -5262,6 +5305,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface CreateGoalResult {\n    readonly ref: GoalRef;\n}',
   },
   {
+    name: 'CreateScoJobRequest',
+    declaration: 'export interface CreateScoJobRequest extends ScoWorkspaceRequest {\n    name: string;\n    displayName?: string;\n    image: string;\n    imageType?: ScoImageType;\n    args: string;\n    framework?: ScoFramework;\n    podCount?: number;\n    gpuCount?: number;\n    cpuCount?: number;\n    memoryGib?: number;\n    machineType?: string;\n    rdmaName?: string;\n    shmSizeGib?: number;\n    queueId?: string;\n    priority?: ScoPriority;\n    env?: Readonly<Record<string, string>>;\n    volumeMounts?: readonly string[];\n    maxAttempts?: number;\n    enableQueuing?: boolean;\n    tensorboardLogPath?: string;\n    dryRun?: boolean;\n}',
+  },
+  {
     name: 'CreateSessionOptions',
     declaration: 'export interface CreateSessionOptions {\n    readonly seed?: readonly SessionEvent[];\n    readonly inheritedEventCount?: SessionLogOffset;\n    readonly meta?: {\n        readonly cwd?: string;\n        readonly parentSession?: SessionId;\n        readonly createdAt?: number;\n        readonly isSeeded?: boolean;\n        readonly origin?: \'subagent\';\n        readonly delegationDepth?: number;\n        readonly agentPreset?: string;\n    };\n}',
   },
@@ -5896,6 +5943,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'KvUnitDescriptor',
     declaration: 'export interface KvUnitDescriptor {\n    readonly name: string;\n    readonly version: number;\n    readonly tables: readonly string[];\n    readonly hasGlobal: boolean;\n    readonly layout?: \'single\' | \'per-record\';\n    readonly compatibleVersions?: readonly number[];\n}',
+  },
+  {
+    name: 'ListScoJobsRequest',
+    declaration: 'export interface ListScoJobsRequest extends ScoWorkspaceRequest {\n    pageSize?: number;\n    skip?: number;\n    filters?: readonly ScoJobFilter[];\n    orderBy?: string;\n}',
   },
   {
     name: 'LlmAdapter',
@@ -6650,6 +6701,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ReadResultView {\n    card: \'read\';\n    title?: string;\n    path: string;\n    offset: number;\n    lines: ReadFileLine[];\n    totalLines: number;\n    lang?: string;\n    content?: ContentBlock[];\n}',
   },
   {
+    name: 'ReadScoJobLogsRequest',
+    declaration: 'export interface ReadScoJobLogsRequest extends ScoWorkspaceRequest {\n    worker?: string;\n    container?: string;\n}',
+  },
+  {
     name: 'ReasoningBlock',
     declaration: 'export interface ReasoningBlock {\n    type: \'reasoning\';\n    text: string;\n}',
   },
@@ -6946,12 +7001,48 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type ScheduleUpdateResult = {\n    readonly id: ScheduleId;\n    readonly updated: boolean;\n    readonly record: ScheduleRecord;\n} | ScheduleUpdateMiss | ScheduleToolError;',
   },
   {
+    name: 'ScoFramework',
+    declaration: 'export type ScoFramework = \'PYTORCH_DDP\' | \'MPI\' | \'RAY_JOB\' | \'TENSORFLOW_PS\' | \'FRAMEWORK_CUSTOM\';',
+  },
+  {
+    name: 'ScoImageType',
+    declaration: 'export type ScoImageType = \'OFFICIAL\' | \'PRIVATE\' | \'THIRD_PARTY\';',
+  },
+  {
+    name: 'ScoJobCreation',
+    declaration: 'export type ScoJobCreation = {\n    kind: \'dry-run\';\n    job: JsonValue;\n} | {\n    kind: \'created\';\n    name: string;\n    output: string;\n};',
+  },
+  {
+    name: 'ScoJobFilter',
+    declaration: 'export interface ScoJobFilter {\n    field: ScoJobFilterField;\n    value: string;\n}',
+  },
+  {
+    name: 'ScoJobFilterField',
+    declaration: 'export type ScoJobFilterField = \'name\' | \'display_name\' | \'state\' | \'queue_id\' | \'priority\' | \'framework\';',
+  },
+  {
+    name: 'ScoJobLogs',
+    declaration: 'export interface ScoJobLogs {\n    text: string;\n    truncated: boolean;\n}',
+  },
+  {
+    name: 'ScoJobStop',
+    declaration: 'export interface ScoJobStop {\n    names: string[];\n    output: string;\n}',
+  },
+  {
     name: 'Scoped',
     declaration: 'export type Scoped<T extends object> = object & {\n    readonly [ScopedBrand]: T;\n};',
   },
   {
     name: 'ScopeKey',
     declaration: 'export type ScopeKey = object;',
+  },
+  {
+    name: 'ScoPriority',
+    declaration: 'export type ScoPriority = \'NORMAL\' | \'HIGH\' | \'HIGHEST\';',
+  },
+  {
+    name: 'ScoWorkspaceRequest',
+    declaration: 'export interface ScoWorkspaceRequest {\n    workspace?: string;\n}',
   },
   {
     name: 'SearchFileMatches',

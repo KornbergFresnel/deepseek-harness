@@ -83,6 +83,8 @@ Promotion requires a named product role, documented public behavior and limitati
 | [`webworker-packer`](webworker-packer/README.md) | Builds the gzip-compressed VFS image consumed by the browser worker preview | library and CLI — no ctx key |
 | [`webworker-runtime`](webworker-runtime/README.md) | Runs the harness plugin tree inside a dedicated browser worker | library and worker entry — no ctx key |
 | [`worktree`](worktree/README.md) | Creates a named Git worktree and changes the calling Session directory | `ctx.worktrees` |
+| [`sco`](sco/README.md) | SenseCore SSP training-job operations through the local sco CLI | `ctx.sco` |
+| [`tool-sco`](tool-sco/README.md) | Model tools for SSP training jobs, asking before submission and stop | `ctx.tools` |
 
 -----
 
