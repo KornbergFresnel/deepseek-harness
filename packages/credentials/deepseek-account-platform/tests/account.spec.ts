@@ -880,7 +880,7 @@ it('carries the configured embedded frontend selector in the private Platform se
 })
 
 it.each([
-  ['darwin', 'desktop-mac'], ['win32', 'desktop-win'], ['linux', 'desktop-linux'], [null, 'web'],
+  ['darwin', 'desktop-mac'], ['win32', 'desktop-win'], ['linux', 'desktop-mac'], [null, 'web'],
 ] as const)('identifies %s Host API requests over deployment header overrides', async (desktopPlatform, expected) => {
   // Deployment configuration may name the client identity headers, but the caller's metadata always
   // wins for every Host API request. The embedded session keeps the deployment values, and its

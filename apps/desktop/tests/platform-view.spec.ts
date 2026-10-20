@@ -149,7 +149,7 @@ it('injects the deployment and client identity headers only at the Platform orig
   manager.close()
 })
 
-it('identifies Linux embedded Platform requests as desktop-linux', async () => {
+it('identifies Linux embedded Platform requests with the accepted desktop identity', async () => {
   const owner = Object.assign(new EventEmitter(), {
     webContents: new EventEmitter(), contentView: { addChildView: vi.fn(), removeChildView: vi.fn() }, isDestroyed: () => false,
   })
@@ -157,7 +157,7 @@ it('identifies Linux embedded Platform requests as desktop-linux', async () => {
   manager.setSession({ origin: 'https://platform.deepseek.com', userId: null, token: 'fixture-secret' })
   await manager.open(owner, 'usage', bounds)
   expect(interceptHeaders(1, 'https://platform.deepseek.com/usage', {})).toMatchObject({
-    'x-client-platform': 'desktop-linux',
+    'x-client-platform': 'desktop-mac',
   })
   manager.close()
 })

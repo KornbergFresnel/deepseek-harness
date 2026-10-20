@@ -31,7 +31,7 @@ async function mockPlatform() {
     // The real Host composition identifies every Platform request with the five client headers.
     const expected = {
       'x-client-bundle-id': '',
-      'x-client-platform': process.platform === 'win32' ? 'desktop-win' : process.platform === 'linux' ? 'desktop-linux' : 'desktop-mac',
+      'x-client-platform': process.platform === 'win32' ? 'desktop-win' : 'desktop-mac',
       'x-client-version': '1.2.3', 'x-client-locale': 'en_US',
       'x-client-timezone-offset': String(-new Date().getTimezoneOffset() * 60),
     }

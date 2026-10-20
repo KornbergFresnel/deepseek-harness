@@ -136,14 +136,18 @@ export function mergePlatformCookies(base: string, override: string): string {
   return [...cookies].map(([name, value]) => `${name}=${value}`).join('; ')
 }
 
-/** Operating systems whose native Desktop client identity Platform understands. */
+/** Operating systems the native Desktop composition can identify as the client host. */
 export type DesktopClientPlatform = 'darwin' | 'win32' | 'linux'
 
-/** Platform's `x-client-platform` value for each native Desktop operating system. */
+/**
+ * Platform's `x-client-platform` value for each native Desktop operating system.
+ * Platform's `auth_exchange` header enum accepts only `web`, `desktop-mac`, and `desktop-win`,
+ * so Linux presents the macOS identity to complete desktop sign-in.
+ */
 const DESKTOP_CLIENT_PLATFORM: Readonly<Record<DesktopClientPlatform, string>> = {
   darwin: 'desktop-mac',
   win32: 'desktop-win',
-  linux: 'desktop-linux',
+  linux: 'desktop-mac',
 }
 
 /**
