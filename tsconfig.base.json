@@ -344,6 +344,7 @@
       "@deepseek-ai/dsh-experimental-worktree": ["./packages/experimental/worktree/src"],
       "@deepseek-ai/dsh-experimental-tool-worktree": ["./packages/experimental/tool-worktree/src"],
       "@deepseek-ai/dsh-experimental-sco": ["./packages/experimental/sco/src"],
+      "@deepseek-ai/dsh-experimental-sco-submit": ["./packages/experimental/sco-submit/src"],
       "@deepseek-ai/dsh-experimental-tool-sco": ["./packages/experimental/tool-sco/src"],
       "@deepseek-ai/dsh-experimental-cluster-monitor": ["./packages/experimental/cluster-monitor/src/index.ts"],
       "@deepseek-ai/dsh-experimental-cluster-monitor/types": ["./packages/experimental/cluster-monitor/src/types.ts"],

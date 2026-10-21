@@ -12,6 +12,20 @@
         workspace: <你的工作空间>
         # 提交任务的默认队列（可选）
         # queueId: /subscriptions/.../queues/...
+    # 按名字登记数据、代码和输出位置，按模板提交任务；需要基础 bundle 里的存储服务
+    - id: sco-submit
+      name: '@deepseek-ai/dsh-experimental-sco-submit'
+      config:
+        # 每个任务在容器内挂载输出目录的路径，AFS 上对应 <输出根目录>/<任务名>/
+        outputMountPath: /outputs
+        # 任务模板（可选）。code、data、output 写数据源名字，数据源在对话里让 agent 登记
+        # templates:
+        #   wbt-train:
+        #     image: <CCR 镜像>
+        #     code: rlightning-humanoid
+        #     data: [motion-lafan]
+        #     output: wbt-outputs
+        #     command: python scripts/rsl_rl/train.py --task Tracking-Flat-G1 --headless
     - id: tool-sco
       name: '@deepseek-ai/dsh-experimental-tool-sco'
     # 定时用 sco 轮询关注的任务，解析训练曲线和日志；agent 提交的任务会自动关注

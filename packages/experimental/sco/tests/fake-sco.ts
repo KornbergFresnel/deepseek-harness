@@ -2,19 +2,31 @@ import { chmod, mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-/** Node script standing in for the sco CLI: records argv and answers by subcommand and job name. */
+/** Node script standing in for the sco CLI: records argv and answers by command group, subcommand, and job name. */
 const SCRIPT = String.raw`#!/usr/bin/env node
 const { appendFileSync } = require('node:fs')
 const { join } = require('node:path')
 const argv = process.argv.slice(2)
 appendFileSync(join(__dirname, 'calls.jsonl'), JSON.stringify(argv) + '\n')
-const rest = argv.slice(argv.indexOf('jobs') + 1)
+const group = argv[argv.indexOf('ssp') + 1]
+const rest = argv.slice(argv.indexOf('ssp') + 2)
 const [command, target] = rest
+const QUEUES = '/subscriptions/s/resourceGroups/r/regions/cn/clusters/'
+if (group === 'workspaces') {
+  if (target === 'ws-fail') { process.stderr.write('workspace not found\n'); process.exit(5) }
+  process.stdout.write(JSON.stringify({ queues: [{ id: QUEUES + 'c1/queues/gpu-a' }, { id: QUEUES + 'c1/queues/gpu-a', alias: true }, { id: QUEUES + 'c2/queues/cpu-b' }, { note: 'not a queue id' }] }))
+  return
+}
+if (group === 'queues') {
+  process.stdout.write(JSON.stringify({ name: rest[2], workloads: [{ spec_code: target === 'c1' ? 'h1ls.rp.k60a' : 'c6.large' }] }))
+  return
+}
 if (rest.includes('job-fail')) { process.stderr.write('job not found\n'); process.exit(3) }
 if (rest.includes('job-silent-fail')) { process.stdout.write('quota exceeded\n'); process.exit(4) }
 if (rest.includes('job-garbage')) { process.stdout.write('not json'); process.exit(0) }
 if (rest.includes('job-flood')) { process.stdout.write('x'.repeat(4096)); process.exit(0) }
 if (rest.includes('job-hang')) { setTimeout(() => {}, 60000); return }
+if (rest.includes('--machine-type=retired.spec')) { process.stderr.write('machine type retired.spec is not offered by the queue\n'); process.exit(6) }
 switch (command) {
   case 'list': process.stdout.write(JSON.stringify({ jobs: [{ name: 'job-a', state: 'RUNNING' }] })); break
   case 'describe': process.stdout.write(JSON.stringify({ name: target, state: 'RUNNING' })); break

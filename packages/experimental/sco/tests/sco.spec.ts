@@ -125,6 +125,22 @@ describe('SSP job operations through the sco CLI', () => {
     await disposed
   })
 
+  it('lists workspace queues and reads one queue, requiring a resolvable workspace', async () => {
+    const { ctx, fake } = await gateway({ profile: 'pjlab' })
+    expect(ctx.sco.profile).toBe('pjlab')
+    await expect(ctx.sco.listQueues()).rejects.toThrow('listing queues needs a workspace')
+    expect(await ctx.sco.listQueues({ workspace: 'team-a' })).toHaveProperty('queues')
+    expect(await ctx.sco.describeQueue('c1', 'gpu-a')).toEqual({ name: 'gpu-a', workloads: [{ spec_code: 'h1ls.rp.k60a' }] })
+    await expect(ctx.sco.listQueues({ workspace: 'ws-fail' })).rejects.toThrow('sco ssp workspaces list-queues failed (5): workspace not found')
+    await expect(ctx.sco.describeQueue('--help', 'q')).rejects.toThrow('cluster "--help" must start with a letter or digit')
+    expect(await fake.calls()).toEqual([
+      ['--profile=pjlab', 'ssp', 'workspaces', 'list-queues', 'team-a', '--format=json'],
+      ['--profile=pjlab', 'ssp', 'queues', 'get', 'c1', 'gpu-a', '--format=json'],
+      ['--profile=pjlab', 'ssp', 'workspaces', 'list-queues', 'ws-fail', '--format=json'],
+    ])
+    expect(ctx.sco.workspaceOf({})).toBeUndefined()
+  })
+
   it('fails loud on invalid configuration', async () => {
     fake = await fakeSco()
     for (const [config, message] of [

@@ -50,6 +50,12 @@ importers:
       '@deepseek-ai/dsh-experimental-claude-code-mods':
         specifier: workspace:*
         version: link:packages/experimental/claude-code-mods
+      '@deepseek-ai/dsh-experimental-client-ui-cluster-monitor':
+        specifier: workspace:*
+        version: link:packages/experimental/client-ui-cluster-monitor
+      '@deepseek-ai/dsh-experimental-cluster-monitor':
+        specifier: workspace:*
+        version: link:packages/experimental/cluster-monitor
       '@deepseek-ai/dsh-experimental-computer-use-cua-driver-mcp':
         specifier: workspace:*
         version: link:packages/experimental/computer-use-cua-driver-mcp
@@ -59,15 +65,12 @@ importers:
       '@deepseek-ai/dsh-experimental-cua-macos':
         specifier: workspace:*
         version: link:packages/experimental/cua-macos
+      '@deepseek-ai/dsh-experimental-sco-submit':
+        specifier: workspace:*
+        version: link:packages/experimental/sco-submit
       '@deepseek-ai/dsh-experimental-tool-sco':
         specifier: workspace:*
         version: link:packages/experimental/tool-sco
-      '@deepseek-ai/dsh-experimental-client-ui-cluster-monitor':
-        specifier: workspace:*
-        version: link:packages/experimental/client-ui-cluster-monitor
-      '@deepseek-ai/dsh-experimental-cluster-monitor':
-        specifier: workspace:*
-        version: link:packages/experimental/cluster-monitor
       '@deepseek-ai/dsh-experimental-tool-worktree':
         specifier: workspace:*
         version: link:packages/experimental/tool-worktree
@@ -9091,6 +9094,37 @@ importers:
         specifier: workspace:*
         version: link:../../util/values
 
+  packages/experimental/sco-submit:
+    dependencies:
+      '@deepseek-ai/schemastery':
+        specifier: link:../../../vendor/schemastery
+        version: link:../../../vendor/schemastery
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-experimental-sco':
+        specifier: workspace:*
+        version: link:../sco
+      '@deepseek-ai/dsh-storage':
+        specifier: workspace:*
+        version: link:../../storage/storage
+      '@deepseek-ai/dsh-storage-domain':
+        specifier: workspace:*
+        version: link:../../storage/storage-domain
+      '@deepseek-ai/dsh-storage-json':
+        specifier: workspace:*
+        version: link:../../storage/storage-json
+      '@deepseek-ai/dsh-subprocess-local':
+        specifier: workspace:*
+        version: link:../../subprocess/subprocess-local
+      '@deepseek-ai/dsh-util-values':
+        specifier: workspace:*
+        version: link:../../util/values
+
   packages/experimental/session-inspector:
     devDependencies:
       '@deepseek-ai/cordis':
@@ -9420,6 +9454,9 @@ importers:
       '@deepseek-ai/dsh-agent-loop':
         specifier: workspace:*
         version: link:../../core/agent-loop
+      '@deepseek-ai/dsh-experimental-sco-submit':
+        specifier: workspace:*
+        version: link:../sco-submit
       '@deepseek-ai/dsh-llm':
         specifier: workspace:*
         version: link:../../llm/llm
@@ -9429,6 +9466,15 @@ importers:
       '@deepseek-ai/dsh-session-projection':
         specifier: workspace:*
         version: link:../../session/session-projection
+      '@deepseek-ai/dsh-storage':
+        specifier: workspace:*
+        version: link:../../storage/storage
+      '@deepseek-ai/dsh-storage-domain':
+        specifier: workspace:*
+        version: link:../../storage/storage-domain
+      '@deepseek-ai/dsh-storage-json':
+        specifier: workspace:*
+        version: link:../../storage/storage-json
       '@deepseek-ai/dsh-subprocess-local':
         specifier: workspace:*
         version: link:../../subprocess/subprocess-local

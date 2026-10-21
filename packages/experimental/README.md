@@ -84,6 +84,7 @@ Promotion requires a named product role, documented public behavior and limitati
 | [`webworker-runtime`](webworker-runtime/README.md) | Runs the harness plugin tree inside a dedicated browser worker | library and worker entry — no ctx key |
 | [`worktree`](worktree/README.md) | Creates a named Git worktree and changes the calling Session directory | `ctx.worktrees` |
 | [`sco`](sco/README.md) | SenseCore SSP training-job operations through the local sco CLI | `ctx.sco` |
+| [`sco-submit`](sco-submit/README.md) | SSP job composition from registered data, code, and output sources and configured templates | `ctx.scoSubmit` |
 | [`tool-sco`](tool-sco/README.md) | Model tools for SSP training jobs, asking before submission and stop | `ctx.tools` |
 | [`cluster-monitor`](cluster-monitor/README.md) | Host polling of watched SSP jobs: state, training curves, and logs | `ctx.clusterMonitor` |
 | [`client-ui-cluster-monitor`](client-ui-cluster-monitor/README.md) | The Cluster jobs page for watched SSP jobs | — |

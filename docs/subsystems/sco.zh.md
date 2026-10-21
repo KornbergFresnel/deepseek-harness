@@ -85,7 +85,7 @@ Source: [`packages/experimental/cluster-monitor/src/index.ts`](../../packages/ex
 
 ### `ctx.sco` — `ScoGateway`
 
-Adapts `sco ssp jobs` subcommands to typed operations. Every invocation is a literal argv with `--flag=value` tokens, run without a shell or sandbox confinement because the CLI needs network access and its credential profile.
+Adapts `sco ssp jobs`, `workspaces list-queues`, and `queues get` subcommands to typed operations. Every invocation is a literal argv with `--flag=value` tokens, run without a shell or sandbox confinement because the CLI needs network access and its credential profile.
 
 ```ts cordis-catalog
 /**
@@ -141,9 +141,100 @@ async createJob(request: CreateScoJobRequest, signal?: AbortSignal): Promise<Sco
  * @returns the stopped names and CLI output.
  */
 async stopJobs(names: readonly string[], request: ScoWorkspaceRequest = {}, signal?: AbortSignal): Promise<ScoJobStop>
+
+/**
+ * List the queues a workspace may submit to.
+ * @param request - workspace; the CLI takes it positionally, so it must resolve from the request or config.
+ * @param signal - cancellation.
+ * @returns the CLI's JSON queue listing.
+ */
+async listQueues(request: ScoWorkspaceRequest = {}, signal?: AbortSignal): Promise<JsonValue>
+
+/**
+ * Read one queue, including the machine types (`spec_code`) its workloads accept.
+ * @param cluster - cluster name from the queue's resource id.
+ * @param queue - queue name from the queue's resource id.
+ * @param signal - cancellation.
+ * @returns the CLI's JSON queue object.
+ */
+async describeQueue(cluster: string, queue: string, signal?: AbortSignal): Promise<JsonValue>
+
+/**
+ * Resolve the workspace an operation targets on the command line.
+ * @param request - optional per-request workspace.
+ * @returns the request workspace, else the configured default; undefined defers to the sco profile.
+ */
+workspaceOf(request: ScoWorkspaceRequest): string | undefined
 ```
 
 Source: [`packages/experimental/sco/src/index.ts`](../../packages/experimental/sco/src/index.ts)
+
+<a id="ctxscosubmit--scosubmit"></a>
+
+### `ctx.scoSubmit` — `ScoSubmit`
+
+Composes SSP jobs from named sources and templates and submits them through `ctx.sco`. Sources and resource options persist in the `sco_submit` storage domain; templates come from config.
+
+```ts cordis-catalog
+/**
+ * List registered sources.
+ * @returns sources by name.
+ */
+async sources(): Promise<Record<string, ScoSource>>
+
+/**
+ * List configured templates.
+ * @returns templates by name.
+ */
+listTemplates(): Record<string, ScoJobTemplate>
+
+/**
+ * Register a new source.
+ * @param name - unused source name.
+ * @param source - locations to mount.
+ */
+async addSource(name: string, source: ScoSource): Promise<void>
+
+/**
+ * Replace a registered source.
+ * @param name - registered source name.
+ * @param source - new locations.
+ */
+async updateSource(name: string, source: ScoSource): Promise<void>
+
+/**
+ * Remove a registered source; templates that name it fail at their next submission.
+ * @param name - registered source name.
+ */
+async removeSource(name: string): Promise<void>
+
+/**
+ * Read the queues and machine types a workspace offers, querying the CLI only when nothing is cached or on `refresh`.
+ * @param request - workspace and refresh.
+ * @param signal - cancellation.
+ * @returns cached or freshly queried options.
+ */
+async resourceOptions(request: ScoResourceOptionsRequest = {}, signal?: AbortSignal): Promise<ScoResourceOptions>
+
+/**
+ * Expand a submission against the registered sources and configured templates without running the CLI.
+ * @param request - submission.
+ * @returns creation flags and the names they were composed from.
+ */
+async resolve(request: SubmitScoJobRequest): Promise<ScoResolvedSubmission>
+
+/**
+ * Expand and submit a job, or validate it with `dryRun`.
+ * A machine type absent from cached options fails before the CLI runs; a CLI failure that names a resource
+ * field refreshes the cached options before the error propagates.
+ * @param request - submission.
+ * @param signal - cancellation; a cancelled creation may still have been accepted remotely.
+ * @returns the merged `TrainingJob` for a dry run, otherwise the created name and CLI output, each with the flags used.
+ */
+async submit(request: SubmitScoJobRequest, signal?: AbortSignal): Promise<ScoSubmission>
+```
+
+Source: [`packages/experimental/sco-submit/src/index.ts`](../../packages/experimental/sco-submit/src/index.ts)
 
 <a id="sco-events"></a>
 
@@ -165,4 +256,21 @@ The CLI accepted a non-dry-run job creation; observers such as job monitors star
 ```
 
 Source: [`packages/experimental/sco/src/index.ts`](../../packages/experimental/sco/src/index.ts)
+
+<a id="scojob-submitted--emit"></a>
+
+#### `sco/job-submitted` — emit
+
+A submission created a job; observers can relate the job to its template, code ref, and data.
+
+```ts cordis-catalog
+/**
+ * A submission created a job; observers can relate the job to its template, code ref, and data.
+ * @mode emit
+ * @param event - created job name, workspace, and the names it was composed from.
+ */
+'sco/job-submitted'(event: ScoJobSubmitted): void
+```
+
+Source: [`packages/experimental/sco-submit/src/index.ts`](../../packages/experimental/sco-submit/src/index.ts)
 <!-- END GENERATED cordis-surface -->

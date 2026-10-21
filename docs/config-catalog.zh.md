@@ -1218,7 +1218,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-experimental-sco`
 
 - `inject`: `subprocess`
-- `source`: [`packages/experimental/sco/src/index.ts:18`](../packages/experimental/sco/src/index.ts)
+- `source`: [`packages/experimental/sco/src/index.ts:19`](../packages/experimental/sco/src/index.ts)
 
 ```ts config-catalog
 /** Executable, sco profile selection, workspace and queue defaults, and subprocess limits. */
@@ -1240,6 +1240,70 @@ export interface Config {
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-sco -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-sco-submit -->
+<a id="deepseek-aidsh-experimental-sco-submit"></a>
+
+## `@deepseek-ai/dsh-experimental-sco-submit`
+
+- `inject`: `sco` · `storageDomain`
+- `refs`: [`ScoFramework`](../packages/experimental/sco/src/index.ts) · [`ScoImageType`](../packages/experimental/sco/src/index.ts) · [`ScoPriority`](../packages/experimental/sco/src/index.ts)
+- `source`: [`packages/experimental/sco-submit/src/index.ts:18`](../packages/experimental/sco-submit/src/index.ts)
+
+```ts config-catalog
+/** Job templates and the output mount path. */
+export interface Config {
+  /** Job templates by name; their source references resolve at submission. */
+  templates?: Record<string, ScoJobTemplate>
+  /** Container path where every job mounts its output directory. */
+  outputMountPath?: string
+}
+
+/** Image, sources, command, and resource defaults that a submission starts from. */
+export type ScoJobTemplate = {
+  /** What the template runs, for the model and the user. */
+  description?: string
+  /** Container image reference. */
+  image?: string
+  /** Image source type passed as `--image-type`. */
+  imageType?: ScoImageType
+  /** Code source name. */
+  code?: string
+  /** Code ref; omitted uses the code source's `defaultRef`. */
+  ref?: string
+  /** Data source names. */
+  data?: string[]
+  /** Output source name. */
+  output?: string
+  /** Job command, run in the code directory after `setup`. */
+  command?: string
+  /** Environment variables; values must not contain commas. */
+  env?: Record<string, string>
+  /** Training framework; the CLI defaults to `PYTORCH_DDP`. */
+  framework?: ScoFramework
+  /** Pods; the CLI defaults to 1. */
+  podCount?: number
+  /** GPUs per pod; GPU jobs also need `machineType`. */
+  gpuCount?: number
+  /** CPU cores per pod; required when `gpuCount` is 0. */
+  cpuCount?: number
+  /** Memory per pod in GiB; required when `gpuCount` is 0. */
+  memoryGib?: number
+  /** Queue machine type code; comma-separate several. */
+  machineType?: string
+  /** RDMA network name. */
+  rdmaName?: string
+  /** `/dev/shm` per pod in GiB, below `memoryGib`. */
+  shmSizeGib?: number
+  /** Scheduling priority. */
+  priority?: ScoPriority
+  /** Retries after failure. */
+  maxAttempts?: number
+  /** Wait in the queue when quota is insufficient. */
+  enableQueuing?: boolean
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-sco-submit -->
 
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-speech-to-text -->
 <a id="deepseek-aidsh-experimental-speech-to-text"></a>
@@ -1348,7 +1412,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-experimental-tool-sco`
 
 - `inject`: `tools` · `sco`
-- `source`: [`packages/experimental/tool-sco/src/index.ts:15`](../packages/experimental/tool-sco/src/index.ts)
+- `source`: [`packages/experimental/tool-sco/src/index.ts:16`](../packages/experimental/tool-sco/src/index.ts)
 
 ```ts config-catalog
 /** Approval behavior for remote mutations. */

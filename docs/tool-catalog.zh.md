@@ -49,7 +49,7 @@
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`、`owning Agent session` | `tool/call`、`todo/write`、`tool/result` | - | todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为检查清单。`allowParallelInProgress` 是没有默认值的必填项，因此本目录明确选择 `true`，对应描述允许同时存在多个 `in_progress` 项。选择 `false` 的部署会获得同一工具，但描述会要求只能有 1 个活动任务。 |
 | `@deepseek-ai/dsh-tool-working-directory` | `working_directory` | `ctx.tools`, `ctx.workingDirectory` | `tool/call`, `working-directory/change`, `user context for directory changes`, `tool/result` | - | 读取或改变调用方 Session 的目录。已有 shell 和进程保留自己的目录；原始元数据和权限根目录保持不变。 |
 | `@deepseek-ai/dsh-experimental-tool-worktree` | `create_worktree` | `ctx.tools`, `ctx.worktrees`, `a calling Agent` | `tool/call`, `Git branch and checkout`, `working-directory/change`, `tool/result` | - | 仅通过显式实验组合加载。在现有写权限下从固定的本地提交创建新分支与检出目录，再改变 Session 工作目录。离开时保留分支与检出目录。 |
-| `@deepseek-ai/dsh-experimental-tool-sco` | `sco_job_create`, `sco_job_describe`, `sco_job_list`, `sco_job_logs`, `sco_job_stop`, `sco_job_workers` | `ctx.tools`, `ctx.sco`, `ctx.approval for submission and stop` | `tool/call`, `SenseCore SSP training jobs`, `tool/result` | - | 仅通过显式实验组合加载。运行本地 sco CLI；除非 confirmMutations 为 false，否则未设置 dryRun 的提交和停止都会询问用户。 |
+| `@deepseek-ai/dsh-experimental-tool-sco` | `sco_job_create`, `sco_job_describe`, `sco_job_list`, `sco_job_logs`, `sco_job_stop`, `sco_job_submit`, `sco_job_workers`, `sco_resource_options`, `sco_source_add`, `sco_source_remove`, `sco_source_update`, `sco_sources_list` | `ctx.tools`, `ctx.sco`, `ctx.scoSubmit for sources and template submission`, `ctx.approval for submission and stop` | `tool/call`, `SenseCore SSP training jobs`, `registered sources`, `tool/result` | - | 仅通过显式实验组合加载。运行本地 sco CLI；除非 confirmMutations 为 false，否则未设置 dryRun 的提交和停止都会询问用户。数据源、资源选项和按模板提交的工具只在挂载 sco-submit 时出现。 |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`、`ctx.workflowEngine`、`ctx.systemPrompt`、`a calling Agent (exec.agent parents the script children)` | `tool/call`、`tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-workspace-dependencies` | `load_workspace_dependencies` | `ctx.tools` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`、`web_search` | `ctx.tools`、`ctx.web`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可见 schema 在更换后端时保持稳定。 |
@@ -2742,10 +2742,6 @@ todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为
       "type": "integer",
       "description": "/dev/shm per pod in GiB, below memoryGib."
     },
-    "queueId": {
-      "type": "string",
-      "description": "Full queue resource id. Omit to use the configured default."
-    },
     "priority": {
       "type": "string",
       "enum": [
@@ -2753,6 +2749,18 @@ todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为
         "HIGH",
         "HIGHEST"
       ]
+    },
+    "maxAttempts": {
+      "type": "integer",
+      "description": "Retries after failure."
+    },
+    "enableQueuing": {
+      "type": "boolean",
+      "description": "Wait in queue when quota is insufficient."
+    },
+    "queueId": {
+      "type": "string",
+      "description": "Full queue resource id. Omit to use the configured default."
     },
     "env": {
       "type": "object",
@@ -2765,14 +2773,6 @@ todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为
       "items": {
         "type": "string"
       }
-    },
-    "maxAttempts": {
-      "type": "integer",
-      "description": "Retries after failure."
-    },
-    "enableQueuing": {
-      "type": "boolean",
-      "description": "Wait in queue when quota is insufficient."
     },
     "tensorboardLogPath": {
       "type": "string",
@@ -2941,6 +2941,145 @@ todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为
 
 来源：[`packages/experimental/tool-sco/src/index.ts`](../packages/experimental/tool-sco/src/index.ts)
 
+### `sco_job_submit`
+
+提交由模板和已登记数据源组合的 SSP 任务：数据源挂载在各自路径，代码库把根目录下所选 ref 的目录挂载到挂载点并在执行 setup 后运行命令，输出位置把根目录下以任务名命名的目录挂载到固定输出路径。请求字段覆盖模板。先用 dryRun 运行并把展开后的参数给用户看；真正提交会询问用户。从 sco_resource_options 中选择 machineType 和 queueId。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "New job name: job- prefix, lowercase letters, digits, and hyphens, at most 32 characters."
+    },
+    "template": {
+      "type": "string",
+      "description": "Template name from sco_sources_list."
+    },
+    "image": {
+      "type": "string",
+      "description": "Container image reference; overrides the template."
+    },
+    "imageType": {
+      "type": "string",
+      "enum": [
+        "OFFICIAL",
+        "PRIVATE",
+        "THIRD_PARTY"
+      ]
+    },
+    "code": {
+      "type": "string",
+      "description": "Code source name."
+    },
+    "ref": {
+      "type": "string",
+      "description": "Code ref directory. Omit for the source default."
+    },
+    "data": {
+      "type": "array",
+      "description": "Data source names.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "output": {
+      "type": "string",
+      "description": "Output source name."
+    },
+    "command": {
+      "type": "string",
+      "description": "Job command; overrides the template."
+    },
+    "extraArgs": {
+      "type": "string",
+      "description": "Arguments appended to the command."
+    },
+    "env": {
+      "type": "object",
+      "description": "Environment variables as string values.",
+      "additionalProperties": true
+    },
+    "framework": {
+      "type": "string",
+      "description": "Defaults to PYTORCH_DDP.",
+      "enum": [
+        "PYTORCH_DDP",
+        "MPI",
+        "RAY_JOB",
+        "TENSORFLOW_PS",
+        "FRAMEWORK_CUSTOM"
+      ]
+    },
+    "podCount": {
+      "type": "integer",
+      "description": "Pods. Defaults to 1."
+    },
+    "gpuCount": {
+      "type": "integer",
+      "description": "GPUs per pod. Defaults to 0."
+    },
+    "cpuCount": {
+      "type": "integer",
+      "description": "CPU cores per pod."
+    },
+    "memoryGib": {
+      "type": "integer",
+      "description": "Memory per pod in GiB."
+    },
+    "machineType": {
+      "type": "string",
+      "description": "Queue machine type code; comma-separate several."
+    },
+    "rdmaName": {
+      "type": "string"
+    },
+    "shmSizeGib": {
+      "type": "integer",
+      "description": "/dev/shm per pod in GiB, below memoryGib."
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "NORMAL",
+        "HIGH",
+        "HIGHEST"
+      ]
+    },
+    "maxAttempts": {
+      "type": "integer",
+      "description": "Retries after failure."
+    },
+    "enableQueuing": {
+      "type": "boolean",
+      "description": "Wait in queue when quota is insufficient."
+    },
+    "displayName": {
+      "type": "string",
+      "description": "Console display name."
+    },
+    "queueId": {
+      "type": "string",
+      "description": "Full queue resource id. Omit to use the configured default."
+    },
+    "workspace": {
+      "type": "string",
+      "description": "SSP workspace name. Omit to use the configured default."
+    },
+    "dryRun": {
+      "type": "boolean",
+      "description": "Validate and return the merged TrainingJob without submitting."
+    }
+  },
+  "required": [
+    "name"
+  ]
+}
+```
+
+来源：[`packages/experimental/tool-sco/src/index.ts`](../packages/experimental/tool-sco/src/index.ts)
+
 ### `sco_job_workers`
 
 列出 SSP 训练任务当前的 Worker。Worker 名称用于在 sco_job_logs 中选择日志。
@@ -2966,7 +3105,212 @@ todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为
 
 来源：[`packages/experimental/tool-sco/src/index.ts`](../packages/experimental/tool-sco/src/index.ts)
 
-仅通过显式实验组合加载。运行本地 sco CLI；除非 confirmMutations 为 false，否则未设置 dryRun 的提交和停止都会询问用户。
+### `sco_resource_options`
+
+读取工作空间可提交的队列以及每个队列的 CLI 对象，其中列出该队列 workload 接受的机型（spec_code）。结果缓存在本地；只有提交因机型、队列或配额失败后，或用户要求时，才设置 refresh。把机型和队列作为选项交给用户，而不是让用户自己输入。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "workspace": {
+      "type": "string",
+      "description": "SSP workspace name. Omit to use the configured default."
+    },
+    "refresh": {
+      "type": "boolean",
+      "description": "Query the cluster even when options are cached."
+    }
+  }
+}
+```
+
+来源：[`packages/experimental/tool-sco/src/index.ts`](../packages/experimental/tool-sco/src/index.ts)
+
+### `sco_source_add`
+
+登记集群存储上新的数据、代码或输出位置。向用户询问卷和目录，不要猜测。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Source name: lowercase letters, digits, and hyphens."
+    },
+    "kind": {
+      "type": "string",
+      "description": "data: a dataset mounted at mountPath. code: snapshots under root/<ref>/, mounted at mountPath, where the command runs. output: job outputs under root/<job name>/, mounted at the fixed output path.",
+      "enum": [
+        "data",
+        "code",
+        "output"
+      ]
+    },
+    "volumeType": {
+      "type": "string",
+      "enum": [
+        "afs",
+        "aoss"
+      ]
+    },
+    "volumeId": {
+      "type": "string",
+      "description": "AFS volume UUID (afs)."
+    },
+    "bucket": {
+      "type": "string",
+      "description": "AOSS bucket (aoss)."
+    },
+    "endpoint": {
+      "type": "string",
+      "description": "AOSS endpoint host without port (aoss)."
+    },
+    "path": {
+      "type": "string",
+      "description": "Directory or prefix inside the volume (data); omit for the volume root."
+    },
+    "root": {
+      "type": "string",
+      "description": "Directory inside the volume holding one subdirectory per ref (code) or per job (output)."
+    },
+    "mountPath": {
+      "type": "string",
+      "description": "Absolute container path (data, code)."
+    },
+    "defaultRef": {
+      "type": "string",
+      "description": "Ref used when a submission names none (code)."
+    },
+    "setup": {
+      "type": "string",
+      "description": "Shell command run in the code directory before the job command (code)."
+    },
+    "description": {
+      "type": "string",
+      "description": "What the source holds."
+    }
+  },
+  "required": [
+    "name",
+    "kind",
+    "volumeType"
+  ]
+}
+```
+
+来源：[`packages/experimental/tool-sco/src/index.ts`](../packages/experimental/tool-sco/src/index.ts)
+
+### `sco_source_remove`
+
+删除已登记的数据源。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "name"
+  ]
+}
+```
+
+来源：[`packages/experimental/tool-sco/src/index.ts`](../packages/experimental/tool-sco/src/index.ts)
+
+### `sco_source_update`
+
+替换已登记数据源的全部字段。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Source name: lowercase letters, digits, and hyphens."
+    },
+    "kind": {
+      "type": "string",
+      "description": "data: a dataset mounted at mountPath. code: snapshots under root/<ref>/, mounted at mountPath, where the command runs. output: job outputs under root/<job name>/, mounted at the fixed output path.",
+      "enum": [
+        "data",
+        "code",
+        "output"
+      ]
+    },
+    "volumeType": {
+      "type": "string",
+      "enum": [
+        "afs",
+        "aoss"
+      ]
+    },
+    "volumeId": {
+      "type": "string",
+      "description": "AFS volume UUID (afs)."
+    },
+    "bucket": {
+      "type": "string",
+      "description": "AOSS bucket (aoss)."
+    },
+    "endpoint": {
+      "type": "string",
+      "description": "AOSS endpoint host without port (aoss)."
+    },
+    "path": {
+      "type": "string",
+      "description": "Directory or prefix inside the volume (data); omit for the volume root."
+    },
+    "root": {
+      "type": "string",
+      "description": "Directory inside the volume holding one subdirectory per ref (code) or per job (output)."
+    },
+    "mountPath": {
+      "type": "string",
+      "description": "Absolute container path (data, code)."
+    },
+    "defaultRef": {
+      "type": "string",
+      "description": "Ref used when a submission names none (code)."
+    },
+    "setup": {
+      "type": "string",
+      "description": "Shell command run in the code directory before the job command (code)."
+    },
+    "description": {
+      "type": "string",
+      "description": "What the source holds."
+    }
+  },
+  "required": [
+    "name",
+    "kind",
+    "volumeType"
+  ]
+}
+```
+
+来源：[`packages/experimental/tool-sco/src/index.ts`](../packages/experimental/tool-sco/src/index.ts)
+
+### `sco_sources_list`
+
+列出已登记的数据、代码和输出位置、已配置的任务模板，以及每个任务挂载输出目录的固定容器路径。调用 sco_job_submit 前先调用它来选择名字。
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+来源：[`packages/experimental/tool-sco/src/index.ts`](../packages/experimental/tool-sco/src/index.ts)
+
+仅通过显式实验组合加载。运行本地 sco CLI；除非 confirmMutations 为 false，否则未设置 dryRun 的提交和停止都会询问用户。数据源、资源选项和按模板提交的工具只在挂载 sco-submit 时出现。
 
 <a id="deepseek-aidsh-tool-workflow"></a>
 

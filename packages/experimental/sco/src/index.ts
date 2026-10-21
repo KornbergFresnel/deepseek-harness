@@ -1,4 +1,4 @@
-/** SenseCore SSP training-job operations through the locally installed `sco` CLI. */
+/** SenseCore SSP training-job and queue operations through the locally installed `sco` CLI. */
 
 import { homedir } from 'node:os'
 import { Context, Service } from '@deepseek-ai/cordis'
@@ -7,7 +7,7 @@ import type {} from '@deepseek-ai/dsh-subprocess'
 import type { SubprocessCollectedOutputs } from '@deepseek-ai/dsh-subprocess'
 import { deadline, MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
-import { createArgv, jobName, listArgv, logsArgv } from './argv.ts'
+import { createArgv, jobName, listArgv, logsArgv, resourceName } from './argv.ts'
 import type {
   CreateScoJobRequest, ListScoJobsRequest, ReadScoJobLogsRequest, ScoJobCreated, ScoJobCreation, ScoJobLogs, ScoJobStop,
   ScoWorkspaceRequest,
@@ -50,6 +50,9 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
+/** `sco ssp` command groups the gateway invokes. */
+type ScoCommandGroup = 'jobs' | 'workspaces' | 'queues'
+
 /** Captured result of one CLI invocation. */
 interface Invocation {
   stdout: string
@@ -57,7 +60,7 @@ interface Invocation {
 }
 
 /**
- * Adapts `sco ssp jobs` subcommands to typed operations.
+ * Adapts `sco ssp jobs`, `workspaces list-queues`, and `queues get` subcommands to typed operations.
  * Every invocation is a literal argv with `--flag=value` tokens, run without a shell or
  * sandbox confinement because the CLI needs network access and its credential profile.
  */
@@ -103,7 +106,7 @@ export class ScoGateway extends Service {
    * @returns the CLI's JSON listing.
    */
   async listJobs(request: ListScoJobsRequest = {}, signal?: AbortSignal): Promise<JsonValue> {
-    return this.json([...listArgv(request), ...this.workspaceArgv(request), '--format=json'], signal)
+    return this.json('jobs', [...listArgv(request), ...this.workspaceArgv(request), '--format=json'], signal)
   }
 
   /**
@@ -114,7 +117,7 @@ export class ScoGateway extends Service {
    * @returns the CLI's JSON job object.
    */
   async describeJob(name: string, request: ScoWorkspaceRequest = {}, signal?: AbortSignal): Promise<JsonValue> {
-    return this.json(['describe', jobName(name), ...this.workspaceArgv(request), '--format=json'], signal)
+    return this.json('jobs', ['describe', jobName(name), ...this.workspaceArgv(request), '--format=json'], signal)
   }
 
   /**
@@ -125,7 +128,7 @@ export class ScoGateway extends Service {
    * @returns the CLI's JSON worker listing.
    */
   async listWorkers(name: string, request: ScoWorkspaceRequest = {}, signal?: AbortSignal): Promise<JsonValue> {
-    return this.json(['get-workers', jobName(name), ...this.workspaceArgv(request), '--format=json'], signal)
+    return this.json('jobs', ['get-workers', jobName(name), ...this.workspaceArgv(request), '--format=json'], signal)
   }
 
   /**
@@ -136,7 +139,7 @@ export class ScoGateway extends Service {
    * @returns the retained log text and whether it was truncated to the output limit.
    */
   async readLogs(name: string, request: ReadScoJobLogsRequest = {}, signal?: AbortSignal): Promise<ScoJobLogs> {
-    const result = await this.run([...logsArgv(name, request), ...this.workspaceArgv(request)], signal, true)
+    const result = await this.run('jobs', [...logsArgv(name, request), ...this.workspaceArgv(request)], signal, true)
     return { text: result.stdout, truncated: result.lossy }
   }
 
@@ -150,9 +153,9 @@ export class ScoGateway extends Service {
    */
   async createJob(request: CreateScoJobRequest, signal?: AbortSignal): Promise<ScoJobCreation> {
     const argv = [...createArgv(request, request.queueId ?? this.config.queueId), ...this.workspaceArgv(request)]
-    if (request.dryRun === true) return { kind: 'dry-run', job: await this.json(argv, signal) }
-    const result = await this.run(argv, signal)
-    const workspace = request.workspace ?? this.config.workspace
+    if (request.dryRun === true) return { kind: 'dry-run', job: await this.json('jobs', argv, signal) }
+    const result = await this.run('jobs', argv, signal)
+    const workspace = this.workspaceOf(request)
     this.ctx.emit('sco/job-created', { name: request.name, ...workspace === undefined ? {} : { workspace } })
     return { kind: 'created', name: request.name, output: result.stdout.trim() }
   }
@@ -166,35 +169,74 @@ export class ScoGateway extends Service {
    */
   async stopJobs(names: readonly string[], request: ScoWorkspaceRequest = {}, signal?: AbortSignal): Promise<ScoJobStop> {
     if (names.length === 0 || names.length > 100) throw new Error('sco: stop takes 1 to 100 job names')
-    const result = await this.run(['stop', ...names.map(jobName), ...this.workspaceArgv(request)], signal)
+    const result = await this.run('jobs', ['stop', ...names.map(jobName), ...this.workspaceArgv(request)], signal)
     return { names: [...names], output: result.stdout.trim() }
   }
 
-  private workspaceArgv(request: ScoWorkspaceRequest): string[] {
-    const workspace = request.workspace ?? this.config.workspace
-    if (workspace === undefined) return []
-    if (workspace.trim().length === 0) throw new Error('sco: workspace must not be empty')
-    return [`--workspace-name=${workspace}`]
+  /**
+   * List the queues a workspace may submit to.
+   * @param request - workspace; the CLI takes it positionally, so it must resolve from the request or config.
+   * @param signal - cancellation.
+   * @returns the CLI's JSON queue listing.
+   */
+  async listQueues(request: ScoWorkspaceRequest = {}, signal?: AbortSignal): Promise<JsonValue> {
+    const workspace = this.workspaceOf(request)
+    if (workspace === undefined) throw new Error('sco: listing queues needs a workspace from the request or the gateway config')
+    return this.json('workspaces', ['list-queues', resourceName('workspace', workspace), '--format=json'], signal)
   }
 
-  private async json(argv: readonly string[], signal: AbortSignal | undefined): Promise<JsonValue> {
-    const { stdout } = await this.run(argv, signal)
+  /**
+   * Read one queue, including the machine types (`spec_code`) its workloads accept.
+   * @param cluster - cluster name from the queue's resource id.
+   * @param queue - queue name from the queue's resource id.
+   * @param signal - cancellation.
+   * @returns the CLI's JSON queue object.
+   */
+  async describeQueue(cluster: string, queue: string, signal?: AbortSignal): Promise<JsonValue> {
+    return this.json('queues', ['get', resourceName('cluster', cluster), resourceName('queue', queue), '--format=json'], signal)
+  }
+
+  /**
+   * Resolve the workspace an operation targets on the command line.
+   * @param request - optional per-request workspace.
+   * @returns the request workspace, else the configured default; undefined defers to the sco profile.
+   */
+  workspaceOf(request: ScoWorkspaceRequest): string | undefined {
+    const workspace = request.workspace ?? this.config.workspace
+    if (workspace !== undefined && workspace.trim().length === 0) throw new Error('sco: workspace must not be empty')
+    return workspace
+  }
+
+  /** The configured sco profile, or undefined for the CLI's active profile. */
+  get profile(): string | undefined {
+    return this.config.profile
+  }
+
+  private workspaceArgv(request: ScoWorkspaceRequest): string[] {
+    const workspace = this.workspaceOf(request)
+    return workspace === undefined ? [] : [`--workspace-name=${workspace}`]
+  }
+
+  private async json(group: ScoCommandGroup, argv: readonly string[], signal: AbortSignal | undefined): Promise<JsonValue> {
+    const { stdout } = await this.run(group, argv, signal)
     try {
       return JSON.parse(stdout) as JsonValue
     } catch (error) {
-      throw new Error(`sco ssp jobs ${argv[0]} returned non-JSON output: ${stdout.slice(0, 200)}`, { cause: error })
+      throw new Error(`sco ssp ${group} ${argv[0]} returned non-JSON output: ${stdout.slice(0, 200)}`, { cause: error })
     }
   }
 
-  /** Run `sco [--profile=<p>] ssp jobs <argv>` and return stdout; a non-zero exit throws with stderr. */
-  private async run(argv: readonly string[], signal: AbortSignal | undefined, allowLossy = false): Promise<Invocation> {
+  /** Run `sco [--profile=<p>] ssp <group> <argv>` and return stdout; a non-zero exit throws with stderr. */
+  private async run(
+    group: ScoCommandGroup, argv: readonly string[], signal: AbortSignal | undefined, allowLossy = false,
+  ): Promise<Invocation> {
     const operation = signal === undefined ? this.lifetime.signal : AbortSignal.any([this.lifetime.signal, signal])
     using timeout = deadline(operation, this.config.timeoutMs, 'SCO_TIMEOUT')
     timeout.signal.throwIfAborted()
     const program = await this.ctx.subprocess.resolveExecutable(this.config.command, undefined, timeout.signal)
     const profile = this.config.profile === undefined ? [] : [`--profile=${this.config.profile}`]
     const child = this.ctx.subprocess.spawn({
-      argv: [program, ...profile, 'ssp', 'jobs', ...argv],
+      argv: [program, ...profile, 'ssp', group, ...argv],
       cwd: this.cwd,
       env: { SCO_COLOR: 'no' },
       signal: timeout.signal,
@@ -213,9 +255,9 @@ export class ScoGateway extends Service {
       const stdout = captured.stdout.readFrom(0)
       if (outcome.exitCode !== 0) {
         const stderr = captured.stderr.readFrom(0).text.trim()
-        throw new Error(`sco ssp jobs ${argv[0]} failed (${outcome.signal ?? outcome.exitCode}): ${stderr || stdout.text.trim()}`)
+        throw new Error(`sco ssp ${group} ${argv[0]} failed (${outcome.signal ?? outcome.exitCode}): ${stderr || stdout.text.trim()}`)
       }
-      if (stdout.lossy && !allowLossy) throw new Error(`sco ssp jobs ${argv[0]} output exceeds maxOutputBytes`)
+      if (stdout.lossy && !allowLossy) throw new Error(`sco ssp ${group} ${argv[0]} output exceeds maxOutputBytes`)
       return { stdout: stdout.text, lossy: stdout.lossy }
     } finally {
       child.terminate()

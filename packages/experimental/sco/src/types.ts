@@ -15,7 +15,7 @@ export type ScoImageType = 'OFFICIAL' | 'PRIVATE' | 'THIRD_PARTY'
 export type ScoJobFilterField = 'name' | 'display_name' | 'state' | 'queue_id' | 'priority' | 'framework'
 
 /** Workspace selection shared by every SSP job operation; omitted values use the configured default, then the sco profile. */
-export interface ScoWorkspaceRequest {
+export type ScoWorkspaceRequest = {
   /** SSP workspace name. */
   workspace?: string
 }
@@ -56,8 +56,8 @@ export interface ScoJobLogs {
   truncated: boolean
 }
 
-/** Parameterized training-job creation, mapped onto `sco ssp jobs create <name>` flags. */
-export interface CreateScoJobRequest extends ScoWorkspaceRequest {
+/** Parameterized training-job creation, mapped onto `sco ssp jobs create <name>` flags; a type alias so it is a JSON value. */
+export type CreateScoJobRequest = ScoWorkspaceRequest & {
   /** Job name: `job-` prefix, lowercase letters, digits, and hyphens, at most 32 characters. */
   name: string
   /** Console display name. */
@@ -91,7 +91,7 @@ export interface CreateScoJobRequest extends ScoWorkspaceRequest {
   /** Container environment variables. */
   env?: Readonly<Record<string, string>>
   /** Volume mounts in the CLI `PV_AFS:<uuid>:<path>[:<subdir>]` or `PV_AOSS:...` form. */
-  volumeMounts?: readonly string[]
+  volumeMounts?: string[]
   /** Maximum retry attempts after failure (VcJob frameworks only). */
   maxAttempts?: number
   /** Queue when quota is insufficient instead of failing. */

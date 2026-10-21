@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-List, inspect, read logs of, submit, and stop SenseCore SSP training jobs from the Host through the user's own `sco` CLI and credential profile. Each operation is one CLI invocation with literal arguments and a deadline; listing and inspection return the CLI's JSON unchanged.
+List, inspect, read logs of, submit, and stop SenseCore SSP training jobs, and read workspace queues, from the Host through the user's own `sco` CLI and credential profile. Each operation is one CLI invocation with literal arguments and a deadline; listing and inspection return the CLI's JSON unchanged.
 
 ## Table of Contents
 
@@ -46,7 +46,7 @@ Install and initialize `sco` first (`sco init`, then `sco config set subscriptio
 | `graceMs` | `3000` | Subprocess termination grace |
 | `maxOutputBytes` | `1048576` | Captured bytes per output stream |
 
-`ctx.sco` exposes `listJobs(request?)`, `describeJob(name, request?)`, `listWorkers(name, request?)`, `readLogs(name, request?)`, `createJob(request)`, and `stopJobs(names, request?)`, each with an optional `AbortSignal`. Listing, description, and worker reads return the CLI's `--format=json` output as JSON. `readLogs` reads one non-following `stream-logs` round and keeps the tail when output exceeds `maxOutputBytes`, setting `truncated`; every other operation fails on oversized output. `createJob` maps its fields onto parameterized `sco ssp jobs create` flags; with `dryRun` it returns the merged `TrainingJob` without creating anything, otherwise the CLI output. `stopJobs` accepts 1 to 100 names. A non-zero exit fails with the CLI's stderr, or stdout when stderr is empty. A successful non-dry-run `createJob` emits `sco/job-created` with the job name and the resolved workspace, which [cluster-monitor](../cluster-monitor/README.md) uses to watch new jobs.
+`ctx.sco` exposes `listJobs(request?)`, `describeJob(name, request?)`, `listWorkers(name, request?)`, `readLogs(name, request?)`, `createJob(request)`, and `stopJobs(names, request?)`, each with an optional `AbortSignal`. Listing, description, and worker reads return the CLI's `--format=json` output as JSON. `readLogs` reads one non-following `stream-logs` round and keeps the tail when output exceeds `maxOutputBytes`, setting `truncated`; every other operation fails on oversized output. `createJob` maps its fields onto parameterized `sco ssp jobs create` flags; with `dryRun` it returns the merged `TrainingJob` without creating anything, otherwise the CLI output. `stopJobs` accepts 1 to 100 names. A non-zero exit fails with the CLI's stderr, or stdout when stderr is empty. A successful non-dry-run `createJob` emits `sco/job-created` with the job name and the resolved workspace, which [cluster-monitor](../cluster-monitor/README.md) uses to watch new jobs. `listQueues(request?)` runs `sco ssp workspaces list-queues` for the resolved workspace and fails when none resolves; `describeQueue(cluster, queue)` runs `sco ssp queues get`, whose object lists the machine types the queue accepts. `workspaceOf(request)` and `profile` expose the resolved workspace and configured profile, which [sco-submit](../sco-submit/README.md) uses to key cached options.
 
 -----
 
