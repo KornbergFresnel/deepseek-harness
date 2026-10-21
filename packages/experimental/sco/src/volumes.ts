@@ -1,4 +1,4 @@
-/** Validation of the AFS volume listing that `sco afs volumes list --format=json` prints. */
+/** Validation of the AFS volume listing that `sco afs volumes list --format=json` prints, and of `sco srm resources list` pages. */
 
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type { ScoAfsVolume } from './types.ts'
@@ -15,6 +15,34 @@ function capacityBytes(value: string | undefined): number | undefined {
   const match = /^(\d+(?:\.\d+)?)([KMGTP]?B)$/i.exec(value ?? '')
   if (match === null) return undefined
   return Number(match[1]) * 1024 ** (UNITS[(match[2] as string).toUpperCase()] as number)
+}
+
+/** SRM resource type of AFS volumes. */
+export const AFS_VOLUME_RESOURCE = 'storage.afs.v2.volume'
+
+/**
+ * Collect resource names from one `sco srm resources list --format=json` page.
+ * @param page - parsed CLI output.
+ * @param type - SRM resource `type` to keep.
+ * @returns the page's resource ids, and for resources of `type` the keys a volume id may match (`id`, `name`, and the last
+ *   `rid` segment) mapped to `display_name`, else `name`, when that is non-empty and not the key itself.
+ */
+export function parseResourcePage(page: JsonValue, type: string): { ids: string[]; names: Map<string, string> } {
+  if (!Array.isArray(page)) throw new Error('sco srm resources list returned JSON that is not an array')
+  const ids: string[] = []
+  const names = new Map<string, string>()
+  const text = (value: JsonValue | undefined): string => (typeof value === 'string' ? value : '')
+  for (const entry of page) {
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) throw new Error(`sco srm resources list returned a non-object entry: ${JSON.stringify(entry)}`)
+    ids.push(text(entry.id))
+    if (entry.type !== type) continue
+    const label = text(entry.display_name) || text(entry.name)
+    const rid = text(entry.rid)
+    for (const key of [text(entry.id), text(entry.name), rid.slice(rid.lastIndexOf('/') + 1)]) {
+      if (key !== '' && label !== '' && label !== key) names.set(key, label)
+    }
+  }
+  return { ids, names }
 }
 
 /**

@@ -15,6 +15,19 @@ if (argv.includes('afs')) {
   else process.stdout.write(JSON.stringify([volume('vol-a', '51200GB', '43TB'), volume('vol-b', '500GB', '16GB'), volume('vol-c', '0GB', '0GB'), { ID: 'vol-d' }]))
   return
 }
+if (argv.includes('srm')) {
+  const fs = require('node:fs')
+  if (fs.existsSync(join(__dirname, 'srm.json'))) { process.stdout.write(fs.readFileSync(join(__dirname, 'srm.json'), 'utf8')); return }
+  const token = Number(argv.find(arg => arg.startsWith('--page-token=')).slice(13))
+  const eni = index => ({ id: 'eni-' + index, name: 'eni-' + index, display_name: 'eni ' + index, type: 'network.vpc.v2.eni' })
+  const volume = { id: 'vol-b', name: 'afs-team', display_name: '', rid: '/subscriptions/s/zones/z/volumes/afs-team', type: 'storage.afs.v2.volume' }
+  const shared = { id: 'srm-1', name: 'vol-c', display_name: 'shared data', rid: '/subscriptions/s/zones/z/volumes/vol-c', type: 'storage.afs.v2.volume' }
+  const unnamed = { id: 'vol-d', name: 'vol-d', type: 'storage.afs.v2.volume' }
+  if (fs.existsSync(join(__dirname, 'srm-repeat'))) process.stdout.write(JSON.stringify(Array.from({ length: 100 }, (_, index) => eni(index))))
+  else if (token === 1) process.stdout.write(JSON.stringify([...Array.from({ length: 99 }, (_, index) => eni(index)), volume]))
+  else process.stdout.write(JSON.stringify([shared, unnamed, { id: 'eni-x' }]))
+  return
+}
 const group = argv[argv.indexOf('ssp') + 1]
 const rest = argv.slice(argv.indexOf('ssp') + 2)
 const [command, target] = rest

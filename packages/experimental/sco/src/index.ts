@@ -8,7 +8,7 @@ import type { SubprocessCollectedOutputs } from '@deepseek-ai/dsh-subprocess'
 import { deadline, MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { createArgv, jobName, listArgv, logsArgv, resourceName } from './argv.ts'
-import { parseVolumes } from './volumes.ts'
+import { AFS_VOLUME_RESOURCE, parseResourcePage, parseVolumes } from './volumes.ts'
 import type {
   CreateScoJobRequest, ListScoJobsRequest, ScoAfsVolume, ReadScoJobLogsRequest, ScoJobCreated, ScoJobCreation, ScoJobLogs, ScoJobStop,
   ScoWorkspaceRequest,
@@ -52,7 +52,10 @@ declare module '@deepseek-ai/cordis' {
 }
 
 /** `sco` command paths the gateway invokes. */
-type ScoCommand = readonly ['ssp', 'jobs' | 'workspaces' | 'queues'] | readonly ['afs', 'volumes']
+type ScoCommand = readonly ['ssp', 'jobs' | 'workspaces' | 'queues'] | readonly ['afs', 'volumes'] | readonly ['srm', 'resources']
+
+/** Resources requested per `sco srm resources list` page. */
+const SRM_PAGE_SIZE = 100
 
 const JOBS = ['ssp', 'jobs'] as const
 
@@ -203,10 +206,31 @@ export class ScoGateway extends Service {
   /**
    * List the AFS volumes the active sco credentials can see, with capacity and state.
    * @param signal - cancellation.
-   * @returns one record per volume with its used percentage; output that is not an array of objects with an `ID` fails.
+   * @returns one record per volume with its used percentage, named from SRM when the AFS listing leaves `Name` empty; output that is not an
+   *   array of objects with an `ID` fails, as does a failed SRM page.
    */
   async listVolumes(signal?: AbortSignal): Promise<ScoAfsVolume[]> {
-    return parseVolumes(await this.json(['afs', 'volumes'], ['list', '--page-size=1000', '--format=json'], signal))
+    const volumes = parseVolumes(await this.json(['afs', 'volumes'], ['list', '--page-size=1000', '--format=json'], signal))
+    if (volumes.every(volume => volume.name !== undefined)) return volumes
+    const names = await this.resourceNames(AFS_VOLUME_RESOURCE, signal)
+    return volumes.map((volume) => {
+      const name = volume.name ?? names.get(volume.id)
+      return name === undefined ? volume : { ...volume, name }
+    })
+  }
+
+  /** Page through `sco srm resources list` until a short page or a page of resources already seen. */
+  private async resourceNames(type: string, signal: AbortSignal | undefined): Promise<Map<string, string>> {
+    const names = new Map<string, string>()
+    const seen = new Set<string>()
+    for (let token = 1; ; token++) {
+      const argv = ['list', `--page-token=${token}`, `--page-size=${SRM_PAGE_SIZE}`, '--format=json']
+      const page = parseResourcePage(await this.json(['srm', 'resources'], argv, signal), type)
+      for (const [key, name] of page.names) names.set(key, name)
+      const repeated = page.ids.length > 0 && page.ids.every(id => seen.has(id))
+      page.ids.forEach((id) => { seen.add(id) })
+      if (page.ids.length < SRM_PAGE_SIZE || repeated) return names
+    }
   }
 
   /**

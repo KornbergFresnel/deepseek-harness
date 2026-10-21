@@ -162,7 +162,8 @@ async describeQueue(cluster: string, queue: string, signal?: AbortSignal): Promi
 /**
  * List the AFS volumes the active sco credentials can see, with capacity and state.
  * @param signal - cancellation.
- * @returns one record per volume with its used percentage; output that is not an array of objects with an `ID` fails.
+ * @returns one record per volume with its used percentage, named from SRM when the AFS listing leaves `Name` empty; output that is not an
+ *   array of objects with an `ID` fails, as does a failed SRM page.
  */
 async listVolumes(signal?: AbortSignal): Promise<ScoAfsVolume[]>
 

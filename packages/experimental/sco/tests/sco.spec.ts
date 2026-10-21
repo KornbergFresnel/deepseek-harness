@@ -147,10 +147,12 @@ describe('SSP job operations through the sco CLI', () => {
     const { ctx, fake } = await gateway({ profile: 'pjlab' })
     expect(await ctx.sco.listVolumes()).toEqual([
       { id: 'vol-a', type: 'OCEANSTOR', totalCapacity: '51200GB', usedCapacity: '43TB', usedPercent: 86, state: 'ACTIVE' },
-      { id: 'vol-b', type: 'OCEANSTOR', totalCapacity: '500GB', usedCapacity: '16GB', usedPercent: 3.2, state: 'ACTIVE' },
-      { id: 'vol-c', type: 'OCEANSTOR', totalCapacity: '0GB', usedCapacity: '0GB', state: 'ACTIVE' },
+      { id: 'vol-b', name: 'afs-team', type: 'OCEANSTOR', totalCapacity: '500GB', usedCapacity: '16GB', usedPercent: 3.2, state: 'ACTIVE' },
+      { id: 'vol-c', name: 'shared data', type: 'OCEANSTOR', totalCapacity: '0GB', usedCapacity: '0GB', state: 'ACTIVE' },
       { id: 'vol-d' },
     ])
+    const srm = (token: number) => ['--profile=pjlab', 'srm', 'resources', 'list', `--page-token=${token}`, '--page-size=100', '--format=json']
+    expect((await fake.calls()).slice(1)).toEqual([srm(1), srm(2)])
     expect(ctx.sco.queueId).toBeUndefined()
     await writeFile(join(fake.root, 'volumes.json'), JSON.stringify({ volumes: [] }))
     await expect(ctx.sco.listVolumes()).rejects.toThrow('returned JSON that is not an array')
@@ -158,13 +160,28 @@ describe('SSP job operations through the sco CLI', () => {
     await expect(ctx.sco.listVolumes()).rejects.toThrow('returned an entry without a string ID: {"ID":""}')
     await writeFile(join(fake.root, 'volumes.json'), JSON.stringify(['note']))
     await expect(ctx.sco.listVolumes()).rejects.toThrow('without a string ID: "note"')
+    await writeFile(join(fake.root, 'volumes.json'), JSON.stringify([{ ID: 'vol-a', Name: 'named' }]))
+    expect(await ctx.sco.listVolumes()).toEqual([{ id: 'vol-a', name: 'named' }])
     await rm(join(fake.root, 'volumes.json'))
     expect(await ctx.sco.listDirectoryQuotas('vol-a')).toEqual([{ volume: 'vol-a', dir: '/data', limit: '10TB' }])
     await expect(ctx.sco.listDirectoryQuotas('-h')).rejects.toThrow('volume "-h" must start with a letter or digit')
-    expect(await fake.calls()).toEqual([
+    expect((await fake.calls()).slice(3)).toEqual([
       ...Array.from({ length: 4 }, () => ['--profile=pjlab', 'afs', 'volumes', 'list', '--page-size=1000', '--format=json']),
       ['--profile=pjlab', 'afs', 'volumes', 'list-dir-quota', '--instance=vol-a', '--format=json'],
     ])
+  })
+
+  it('stops paging SRM on a repeated page and fails on SRM output it cannot read', async () => {
+    const { ctx, fake } = await gateway()
+    await writeFile(join(fake.root, 'srm-repeat'), '')
+    expect((await ctx.sco.listVolumes()).map(volume => volume.name)).toEqual([undefined, undefined, undefined, undefined])
+    expect((await fake.calls()).filter(argv => argv.includes('srm'))).toHaveLength(2)
+    await writeFile(join(fake.root, 'srm.json'), JSON.stringify({ items: [] }))
+    await expect(ctx.sco.listVolumes()).rejects.toThrow('sco srm resources list returned JSON that is not an array')
+    await writeFile(join(fake.root, 'srm.json'), JSON.stringify([[]]))
+    await expect(ctx.sco.listVolumes()).rejects.toThrow('sco srm resources list returned a non-object entry: []')
+    await writeFile(join(fake.root, 'srm.json'), JSON.stringify([]))
+    expect(await ctx.sco.listVolumes()).toHaveLength(4)
   })
 
   it('fails loud on invalid configuration', async () => {

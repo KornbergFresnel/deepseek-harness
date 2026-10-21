@@ -3326,7 +3326,7 @@ Source: [`packages/experimental/tool-sco/src/index.ts`](../packages/experimental
 
 ### `sco_volumes_list`
 
-List the AFS storage volumes the user's sco credentials can see: id, totalCapacity, usedCapacity, usedPercent (binary units, 1TB = 1024GB), region, zone, endTime, and state. Use the id for sco_volume_quota and for data, code, and output sources.
+List the AFS storage volumes the user's sco credentials can see: id, name (when the console has one), totalCapacity, usedCapacity, usedPercent (binary units, 1TB = 1024GB), region, zone, endTime, and state. Use the id for sco_volume_quota and for data, code, and output sources.
 
 ```json
 {

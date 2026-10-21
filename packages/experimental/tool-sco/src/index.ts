@@ -266,7 +266,7 @@ export function apply(ctx: Context, config: Config): void {
 
   ctx.tools.register(defineTool({
     name: 'sco_volumes_list',
-    description: 'List the AFS storage volumes the user\'s sco credentials can see: id, totalCapacity, usedCapacity, usedPercent (binary units, 1TB = 1024GB), region, zone, endTime, and state. Use the id for sco_volume_quota and for data, code, and output sources.',
+    description: 'List the AFS storage volumes the user\'s sco credentials can see: id, name (when the console has one), totalCapacity, usedCapacity, usedPercent (binary units, 1TB = 1024GB), region, zone, endTime, and state. Use the id for sco_volume_quota and for data, code, and output sources.',
     parameters: {},
     output: { schema: { type: 'json' }, render: (_args, value) => json(value) },
     async execute(_args, exec) {

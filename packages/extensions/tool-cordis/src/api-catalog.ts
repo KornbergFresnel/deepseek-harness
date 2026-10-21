@@ -2159,7 +2159,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         signature: 'async listVolumes(signal?: AbortSignal): Promise<ScoAfsVolume[]>',
         description: 'List the AFS volumes the active sco credentials can see, with capacity and state.',
         parameters: [{ name: 'signal', description: 'cancellation.' }],
-        returns: 'one record per volume with its used percentage; output that is not an array of objects with an `ID` fails.',
+        returns: 'one record per volume with its used percentage, named from SRM when the AFS listing leaves `Name` empty; output that is not an array of objects with an `ID` fails, as does a failed SRM page.',
       },
       {
         signature: 'async listDirectoryQuotas(volume: string, signal?: AbortSignal): Promise<JsonValue>',

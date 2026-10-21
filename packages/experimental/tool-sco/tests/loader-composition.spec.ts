@@ -168,6 +168,8 @@ describe('SSP job tools through real Loader composition', () => {
       asked += 1
       return Promise.resolve<ApprovalOutcome>('rejected')
     })
+    // SRM pages exceed this suite's 1 KiB output cap, so the fake answers with an empty resource page.
+    await writeFile(join(fake!.root, 'srm.json'), '[]')
     const volumes = await call(ctx, agent, 'sco_volumes_list', {})
     expect(volumes.value).toEqual([
       expect.objectContaining({ id: 'vol-a', totalCapacity: '51200GB', usedCapacity: '43TB', usedPercent: 86 }),
