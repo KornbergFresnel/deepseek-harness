@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import ScoGateway from '../src/index.ts'
-import type { Config } from '../src/index.ts'
+import type { Config, CreateScoJobRequest } from '../src/index.ts'
 import { createArgv, listArgv, logsArgv } from '../src/argv.ts'
 import { fakeSco } from './fake-sco.ts'
 import type { FakeSco } from './fake-sco.ts'
@@ -75,12 +75,12 @@ describe('SSP job operations through the sco CLI', () => {
     const { ctx, fake } = await gateway({ queueId: '/queues/default' })
     const created: unknown[] = []
     ctx.on('sco/job-created', (event) => { created.push(event) })
-    const request = {
+    const request: CreateScoJobRequest = {
       name: 'job-wbt', displayName: 'wbt', image: 'registry/rlh:wbt', imageType: 'PRIVATE', args: 'python -m train --flag=-1',
       framework: 'PYTORCH_DDP', podCount: 1, gpuCount: 8, cpuCount: 64, memoryGib: 512, machineType: 'h1ls.rp.k60a', rdmaName: 'rdma0',
       shmSizeGib: 64, priority: 'HIGH', env: { WANDB_MODE: 'offline' }, volumeMounts: ['PV_AFS:0000:/data:/train'], maxAttempts: 0,
       enableQueuing: true, tensorboardLogPath: '/data/tb',
-    } as const
+    }
     expect(await ctx.sco.createJob({ ...request, dryRun: true })).toEqual({ kind: 'dry-run', job: { name: 'job-wbt', spec: {} } })
     expect(await ctx.sco.createJob({ ...request, queueId: '/queues/override', workspace: 'team-a' }))
       .toEqual({ kind: 'created', name: 'job-wbt', output: 'created job-wbt' })

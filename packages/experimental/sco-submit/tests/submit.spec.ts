@@ -10,7 +10,7 @@ import * as StorageDomain from '@deepseek-ai/dsh-storage-domain'
 import * as StorageJson from '@deepseek-ai/dsh-storage-json'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import ScoSubmit from '../src/index.ts'
-import type { Config, ScoJobSubmitted, ScoSource } from '../src/index.ts'
+import type { Config, ScoCodeSource, ScoJobSubmitted, ScoJobTemplate, ScoSource } from '../src/index.ts'
 import { mentions, queueIds, resolveSubmission, validSource } from '../src/resolve.ts'
 import { fakeSco } from '../../sco/tests/fake-sco.ts'
 import type { FakeSco } from '../../sco/tests/fake-sco.ts'
@@ -24,10 +24,10 @@ afterEach(async () => {
 })
 
 const DATA: ScoSource = { kind: 'data', volume: { type: 'afs', id: 'vol-data' }, path: 'datasets/lafan', mountPath: '/data/motion', description: 'LAFAN1' }
-const CODE: ScoSource = { kind: 'code', volume: { type: 'afs', id: 'vol-code' }, root: 'code/rlh', mountPath: '/workspace/code', defaultRef: 'main', setup: 'pip install -e . --no-deps' }
+const CODE: ScoCodeSource = { kind: 'code', volume: { type: 'afs', id: 'vol-code' }, root: 'code/rlh', mountPath: '/workspace/code', defaultRef: 'main', setup: 'pip install -e . --no-deps' }
 const OUTPUT: ScoSource = { kind: 'output', volume: { type: 'afs', id: 'vol-out' }, root: 'outputs/wbt' }
 
-const TEMPLATES: Config['templates'] = {
+const TEMPLATES: Record<string, ScoJobTemplate> = {
   'wbt-train': {
     description: 'whole_body_tracking training',
     image: 'registry/rlh:wbt',
@@ -41,7 +41,7 @@ const TEMPLATES: Config['templates'] = {
   },
 }
 
-async function boot(options: { sco?: ScoConfig; submit?: Config; root?: string; fake?: FakeSco } = {}) {
+async function boot(options: { sco?: ScoConfig; noWorkspace?: boolean; submit?: Config; root?: string; fake?: FakeSco } = {}) {
   const root = options.root ?? await realpath(await mkdtemp(join(tmpdir(), 'dsh-sco-submit-')))
   if (options.root === undefined) cleanup.push(root)
   const fake = options.fake ?? await fakeSco()
@@ -52,7 +52,7 @@ async function boot(options: { sco?: ScoConfig; submit?: Config; root?: string; 
   await ctx.plugin(Storage)
   await ctx.plugin(StorageJson, { root })
   await ctx.plugin(StorageDomain, { backend: 'json' })
-  await ctx.plugin(ScoGateway, { command: fake.command, workspace: 'team-a', ...options.sco })
+  await ctx.plugin(ScoGateway, { command: fake.command, ...options.noWorkspace === true ? {} : { workspace: 'team-a' }, ...options.sco })
   await ctx.plugin(ScoSubmit, { templates: TEMPLATES, ...options.submit })
   return { ctx, fake, root }
 }
@@ -97,7 +97,8 @@ describe('source registry', () => {
     }
     const aoss: ScoSource = { kind: 'data', volume: { type: 'aoss', bucket: 'motion', endpoint: 'oss.local' }, mountPath: '/data' }
     expect(validSource(aoss)).toBe(aoss)
-    expect(validSource({ ...CODE, setup: undefined } as ScoSource)).toMatchObject({ kind: 'code' })
+    const { setup: _setup, ...bare } = CODE
+    expect(validSource(bare)).toMatchObject({ kind: 'code' })
   })
 
   it('fails loud on invalid configuration', async () => {
@@ -212,7 +213,7 @@ describe('resource options and submission', () => {
   })
 
   it('needs a workspace for resource options', async () => {
-    const { ctx } = await boot({ sco: { workspace: undefined } })
+    const { ctx } = await boot({ noWorkspace: true })
     await expect(ctx.scoSubmit.resourceOptions()).rejects.toThrow('resource options need a workspace')
   })
 
@@ -253,7 +254,7 @@ describe('resource options and submission', () => {
   })
 
   it('passes resource failures through unchanged when no workspace resolves', async () => {
-    const { ctx, fake } = await boot({ sco: { workspace: undefined } })
+    const { ctx, fake } = await boot({ noWorkspace: true })
     await expect(ctx.scoSubmit.submit({ name: 'job-silent-fail', image: 'img', command: 'run', machineType: 'h1' })).rejects.toThrow(/quota exceeded$/)
     const submitted: ScoJobSubmitted[] = []
     ctx.on('sco/job-submitted', (event) => { submitted.push(event) })
