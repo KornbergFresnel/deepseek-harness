@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Cluster jobs page",
-    "description": "View SSP job state, training curves, and logs on the Cluster jobs sidebar page."
+    "title": "Cluster jobs and settings pages",
+    "description": "View SSP job state, training curves, and logs, and edit the sources used to submit jobs, from the Cluster sidebar pages."
   }
 }

@@ -8247,6 +8247,12 @@ importers:
       '@deepseek-ai/dsh-experimental-cluster-monitor':
         specifier: workspace:*
         version: link:../cluster-monitor
+      '@deepseek-ai/dsh-experimental-sco':
+        specifier: workspace:*
+        version: link:../sco
+      '@deepseek-ai/dsh-experimental-sco-submit':
+        specifier: workspace:*
+        version: link:../sco-submit
       '@deepseek-ai/dsh-typert-protocol':
         specifier: workspace:*
         version: link:../../typert/protocol
@@ -9121,6 +9127,9 @@ importers:
       '@deepseek-ai/dsh-subprocess-local':
         specifier: workspace:*
         version: link:../../subprocess/subprocess-local
+      '@deepseek-ai/dsh-typert-protocol':
+        specifier: workspace:*
+        version: link:../../typert/protocol
       '@deepseek-ai/dsh-util-values':
         specifier: workspace:*
         version: link:../../util/values

@@ -11,7 +11,7 @@ import * as StorageJson from '@deepseek-ai/dsh-storage-json'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import ScoSubmit from '../src/index.ts'
 import type { Config, ScoCodeSource, ScoJobSubmitted, ScoJobTemplate, ScoSource } from '../src/index.ts'
-import { mentions, queueIds, resolveSubmission, validSource } from '../src/resolve.ts'
+import { machineTypes, mentions, queueIds, resolveSubmission, validSource } from '../src/resolve.ts'
 import { fakeSco } from '../../sco/tests/fake-sco.ts'
 import type { FakeSco } from '../../sco/tests/fake-sco.ts'
 
@@ -261,5 +261,45 @@ describe('resource options and submission', () => {
     await ctx.scoSubmit.submit({ name: 'job-ok', image: 'img', command: 'run', machineType: 'h1' })
     expect(submitted).toEqual([{ name: 'job-ok', data: [] }])
     expect((await fake.calls()).map(argv => argv[2])).toEqual(['create', 'create'])
+  })
+})
+
+describe('clusterConfig Remote namespace', () => {
+  it('serves an overview that follows source and option changes, and edits sources', async () => {
+    const { ctx } = await boot({ sco: { profile: 'pjlab', queueId: '/queues/default' } })
+    const abort = new AbortController()
+    const stream = ctx.scoSubmit.follow(abort.signal)[Symbol.asyncIterator]()
+    const first = await stream.next()
+    expect(first.value).toEqual({
+      profile: 'pjlab', workspace: 'team-a', queueId: '/queues/default', outputMountPath: '/outputs',
+      sources: [], templates: [{ name: 'wbt-train', template: TEMPLATES['wbt-train'] }],
+    })
+    const pending = stream.next()
+    await ctx.scoSubmit.saveSource({ name: 'rlh', source: CODE })
+    expect((await pending).value).toMatchObject({ sources: [{ name: 'rlh', source: CODE }] })
+    await ctx.scoSubmit.saveSource({ name: 'motion', source: DATA })
+    await ctx.scoSubmit.saveSource({ name: 'rlh', source: { ...CODE, defaultRef: 'v2' }, replace: true })
+    await ctx.scoSubmit.refreshOptions()
+    const latest = await stream.next()
+    expect(latest.value).toMatchObject({
+      sources: [{ name: 'motion' }, { name: 'rlh', source: { defaultRef: 'v2' } }],
+      options: { workspace: 'team-a', queues: [{ queue: 'gpu-a', machineTypes: ['h1ls.rp.k60a'] }, { queue: 'cpu-b', machineTypes: ['c6.large'] }] },
+    })
+    await ctx.scoSubmit.deleteSource('motion')
+    expect((await stream.next()).value).toMatchObject({ sources: [{ name: 'rlh' }] })
+    await expect(ctx.scoSubmit.deleteSource('motion')).rejects.toThrow('no source named "motion" is registered')
+    expect((await ctx.scoSubmit.volumes()).map(volume => volume.id)).toEqual(['vol-a', 'vol-b', 'vol-c', 'vol-d'])
+    const waiting = stream.next()
+    abort.abort()
+    expect(await waiting).toEqual({ done: true, value: undefined })
+  })
+
+  it('omits gateway defaults and options that are not configured', async () => {
+    const { ctx } = await boot({ noWorkspace: true })
+    const abort = new AbortController()
+    abort.abort()
+    expect(await ctx.scoSubmit.follow(abort.signal)[Symbol.asyncIterator]().next()).toEqual({ done: true, value: undefined })
+    expect(await ctx.scoSubmit.overview()).toEqual({ outputMountPath: '/outputs', sources: [], templates: [{ name: 'wbt-train', template: TEMPLATES['wbt-train'] }] })
+    expect(machineTypes([{ spec_code: 'a' }, { nested: { spec_code: 'b', other: 'c' } }, { spec_code: 'a' }, { spec_code: 1 }, null])).toEqual(['a', 'b'])
   })
 })

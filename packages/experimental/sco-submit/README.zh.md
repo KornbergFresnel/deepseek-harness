@@ -54,6 +54,8 @@ kind: "package-reference"
 
 `resourceOptions` 执行 `sco ssp workspaces list-queues`，再对列表里找到的每个队列 id 执行一次 `sco ssp queues get`，按 sco profile 和工作空间保存结果；设置 `refresh` 之前一直返回保存的副本。它需要从请求或网关配置得到工作空间。
 
+本服务还为[集群配置页面](../client-ui-cluster-monitor/README.zh.md)提供 `clusterConfig` Remote 命名空间：`overview()` 返回 profile、默认工作空间和队列、`outputMountPath`、数据源、模板，以及默认工作空间的缓存选项和每个队列里识别出的机型；`follow()` 在每次数据源变化或选项刷新后推送新的概览；`saveSource({ name, source, replace? })` 添加数据源，设置 `replace` 时替换已有数据源；`deleteSource(name)`、`refreshOptions()` 和 `volumes()` 分别删除数据源、重新查询默认工作空间和列出 AFS 存储卷。记录类型从 `@deepseek-ai/dsh-experimental-sco-submit/types` 导出。
+
 -----
 
 <a id="understand-the-implementation"></a>
@@ -64,9 +66,9 @@ kind: "package-reference"
 
 | 源文件 | 职责 |
 |---|---|
-| [`src/index.ts`](src/index.ts) | 配置校验、`sco_submit` 存储域、选项缓存、提交和事件 |
+| [`src/index.ts`](src/index.ts) | 配置校验、`sco_submit` 存储域、选项缓存、提交、事件和 `clusterConfig` Remote |
 | [`src/resolve.ts`](src/resolve.ts) | 数据源校验、模板合并、挂载字符串、启动命令和无类型 JSON 扫描 |
-| [`src/types.ts`](src/types.ts) | 数据源、模板、选项和提交记录 |
+| [`src/types.ts`](src/types.ts) | 数据源、模板、选项、提交和配置概览记录 |
 
 数据源和选项保存在 `sco_submit` 存储域（`sources` 和 `resource_options` 两张表），无论存储域设施路由到哪个后端，重启后都保留。挂载路径和卷内子路径只允许字母、数字、`.`、`_`、`-` 和 `/`，且不含 `..`，这样每个挂载都是单个 `--volume-mount` 参数，启动命令里的路径也无需加引号。队列 id 通过在列表中查找形如 `/subscriptions/…/clusters/<cluster>/queues/<queue>` 的字符串得到，机型按队列对象中任意位置的完全相等字符串匹配，因为 CLI 没有文档说明这两种 JSON 结构。
 

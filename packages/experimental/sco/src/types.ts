@@ -122,3 +122,27 @@ export interface ScoJobCreated {
   /** Workspace named on the command line; absent when the sco profile supplied it. */
   workspace?: string
 }
+
+/** One AFS volume from `sco afs volumes list --format=json`; absent fields were missing or empty in the CLI output. */
+export type ScoAfsVolume = {
+  /** Volume id used by `--volume-mount` and `list-dir-quota`. */
+  id: string
+  /** Console name. */
+  name?: string
+  /** Storage backend, such as `OCEANSTOR`. */
+  type?: string
+  /** Total capacity as printed, such as `51200GB`. */
+  totalCapacity?: string
+  /** Used capacity as printed, such as `43TB`. */
+  usedCapacity?: string
+  /** Used percentage of total with one decimal, counting `1TB` as `1024GB`; absent unless both capacities parse and total is non-zero. */
+  usedPercent?: number
+  /** Region name. */
+  region?: string
+  /** Zone name. */
+  zone?: string
+  /** Expiry time as printed. */
+  endTime?: string
+  /** Volume state, such as `ACTIVE`. */
+  state?: string
+}

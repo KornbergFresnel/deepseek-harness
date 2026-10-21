@@ -54,6 +54,8 @@ Sources are registered at runtime, not in config. A `data` source mounts a volum
 
 `resourceOptions` runs `sco ssp workspaces list-queues` and one `sco ssp queues get` per queue id found in the listing, stores the result keyed by sco profile and workspace, and returns the stored copy until `refresh` is set. It needs a workspace from the request or the gateway config.
 
+The service also serves the `clusterConfig` Remote namespace for the [Cluster settings page](../client-ui-cluster-monitor/README.md): `overview()` returns the profile, default workspace and queue, `outputMountPath`, sources, templates, and the default workspace's cached options with the machine types found in each queue; `follow()` streams a new overview after every source change or option refresh; `saveSource({ name, source, replace? })` adds a source, or replaces it when `replace` is set; `deleteSource(name)`, `refreshOptions()`, and `volumes()` remove a source, query the default workspace again, and list AFS volumes. The record types are exported from `@deepseek-ai/dsh-experimental-sco-submit/types`.
+
 -----
 
 <a id="understand-the-implementation"></a>
@@ -64,9 +66,9 @@ Sources are registered at runtime, not in config. A `data` source mounts a volum
 
 | Source | Responsibility |
 |---|---|
-| [`src/index.ts`](src/index.ts) | Config validation, the `sco_submit` storage domain, option caching, submission, and the event |
+| [`src/index.ts`](src/index.ts) | Config validation, the `sco_submit` storage domain, option caching, submission, the event, and the `clusterConfig` Remote |
 | [`src/resolve.ts`](src/resolve.ts) | Source validation, template merging, mount strings, startup command, and untyped JSON scans |
-| [`src/types.ts`](src/types.ts) | Source, template, option, and submission records |
+| [`src/types.ts`](src/types.ts) | Source, template, option, submission, and configuration overview records |
 
 Sources and options live in the `sco_submit` storage domain (tables `sources` and `resource_options`), so they survive restarts on whichever backend the domain facility routes to. Mount paths and volume subpaths are restricted to letters, digits, `.`, `_`, `-`, and `/` without `..`, which keeps every mount a single `--volume-mount` token and lets the startup command use paths without quoting. Queue ids are found by scanning the listing for strings shaped like `/subscriptions/…/clusters/<cluster>/queues/<queue>`, and machine types are matched as exact string values anywhere in a queue object, because the CLI does not document either JSON layout.
 

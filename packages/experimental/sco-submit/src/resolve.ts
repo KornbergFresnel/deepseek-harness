@@ -212,3 +212,23 @@ export function mentions(value: JsonValue, code: string): boolean {
   if (value !== null && typeof value === 'object') return Object.values(value).some(item => mentions(item, code))
   return false
 }
+
+/**
+ * Collect the machine type codes a queue object names under `spec_code` keys.
+ * @param value - the CLI's queue object.
+ * @returns distinct codes in first-seen order.
+ */
+export function machineTypes(value: JsonValue): string[] {
+  const codes = new Set<string>()
+  const visit = (node: JsonValue): void => {
+    if (Array.isArray(node)) node.forEach(visit)
+    else if (node !== null && typeof node === 'object') {
+      for (const [key, child] of Object.entries(node)) {
+        if (key === 'spec_code' && typeof child === 'string') codes.add(child)
+        else visit(child)
+      }
+    }
+  }
+  visit(value)
+  return [...codes]
+}

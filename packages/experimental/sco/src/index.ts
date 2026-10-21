@@ -8,8 +8,9 @@ import type { SubprocessCollectedOutputs } from '@deepseek-ai/dsh-subprocess'
 import { deadline, MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { createArgv, jobName, listArgv, logsArgv, resourceName } from './argv.ts'
+import { parseVolumes } from './volumes.ts'
 import type {
-  CreateScoJobRequest, ListScoJobsRequest, ReadScoJobLogsRequest, ScoJobCreated, ScoJobCreation, ScoJobLogs, ScoJobStop,
+  CreateScoJobRequest, ListScoJobsRequest, ScoAfsVolume, ReadScoJobLogsRequest, ScoJobCreated, ScoJobCreation, ScoJobLogs, ScoJobStop,
   ScoWorkspaceRequest,
 } from './types.ts'
 
@@ -202,10 +203,10 @@ export class ScoGateway extends Service {
   /**
    * List the AFS volumes the active sco credentials can see, with capacity and state.
    * @param signal - cancellation.
-   * @returns the CLI's JSON volume listing.
+   * @returns one record per volume with its used percentage; output that is not an array of objects with an `ID` fails.
    */
-  async listVolumes(signal?: AbortSignal): Promise<JsonValue> {
-    return this.json(['afs', 'volumes'], ['list', '--format=json'], signal)
+  async listVolumes(signal?: AbortSignal): Promise<ScoAfsVolume[]> {
+    return parseVolumes(await this.json(['afs', 'volumes'], ['list', '--format=json'], signal))
   }
 
   /**
@@ -232,6 +233,11 @@ export class ScoGateway extends Service {
   /** The configured sco profile, or undefined for the CLI's active profile. */
   get profile(): string | undefined {
     return this.config.profile
+  }
+
+  /** The configured default queue resource id, or undefined when the sco profile supplies it. */
+  get queueId(): string | undefined {
+    return this.config.queueId
   }
 
   private workspaceArgv(request: ScoWorkspaceRequest): string[] {

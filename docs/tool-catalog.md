@@ -3313,7 +3313,7 @@ List the directory quota rules of one AFS volume.
   "properties": {
     "volume": {
       "type": "string",
-      "description": "Volume ID from sco_volumes_list."
+      "description": "Volume id from sco_volumes_list."
     }
   },
   "required": [
@@ -3326,7 +3326,7 @@ Source: [`packages/experimental/tool-sco/src/index.ts`](../packages/experimental
 
 ### `sco_volumes_list`
 
-List the AFS storage volumes the user's sco credentials can see: ID, TotalCapacity, UsedCapacity, UsedPercent (binary units, 1TB = 1024GB), Region, Zone, EndTime, and State. Use the ID for sco_volume_quota and for data, code, and output sources.
+List the AFS storage volumes the user's sco credentials can see: id, totalCapacity, usedCapacity, usedPercent (binary units, 1TB = 1024GB), region, zone, endTime, and state. Use the id for sco_volume_quota and for data, code, and output sources.
 
 ```json
 {

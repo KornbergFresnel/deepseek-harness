@@ -43,7 +43,7 @@ kind: "package-bundle"
 | `sco_job_logs` | 一轮日志的 `{ text, truncated }` |
 | `sco_job_create` | `{ kind: 'dry-run', job }` 或 `{ kind: 'created', name, output }` |
 | `sco_job_stop` | `{ names, output }` |
-| `sco_volumes_list` | JSON 存储卷数组；容量能解析的卷会加上 `UsedPercent` |
+| `sco_volumes_list` | 存储卷记录，含 `id`、容量、容量能解析时的 `usedPercent`、地域、可用区、到期时间和状态 |
 | `sco_volume_quota` | 某个卷的 JSON 目录配额规则 |
 | `sco_sources_list` | `{ sources, templates, outputMountPath }`（需要 sco-submit） |
 | `sco_source_add`、`sco_source_update` | `{ name, source }`（需要 sco-submit） |
@@ -51,7 +51,7 @@ kind: "package-bundle"
 | `sco_resource_options` | 缓存的 `{ workspace, fetchedAt, queues }`（需要 sco-submit） |
 | `sco_job_submit` | `{ kind: 'dry-run', resolved, job }` 或 `{ kind: 'created', resolved, name, output }`（需要 sco-submit） |
 
-开启 `confirmMutations`（默认 `true`）时，未设置 `dryRun: true` 的 `sco_job_create`、`sco_job_submit` 和所有 `sco_job_stop`，在其他 pre-execute 监听器允许调用后，会通过 `ctx.approval` 询问用户；其他监听器的拒绝直接生效，不再询问。在 `never` 审批策略下这些调用会被拒绝。读取存储卷和登记数据源都不会询问。`UsedPercent` 按二进制单位换算容量（`1TB` = `1024GB`）。只有在允许无人值守地自由提交和停止任务时，才设置 `confirmMutations: false`。[生成的工具目录](../../../docs/tool-catalog.zh.md#deepseek-aidsh-experimental-tool-sco)给出准确的 schema 和面向模型的描述。
+开启 `confirmMutations`（默认 `true`）时，未设置 `dryRun: true` 的 `sco_job_create`、`sco_job_submit` 和所有 `sco_job_stop`，在其他 pre-execute 监听器允许调用后，会通过 `ctx.approval` 询问用户；其他监听器的拒绝直接生效，不再询问。在 `never` 审批策略下这些调用会被拒绝。读取存储卷和登记数据源都不会询问。`usedPercent` 按二进制单位换算容量（`1TB` = `1024GB`）。只有在允许无人值守地自由提交和停止任务时，才设置 `confirmMutations: false`。[生成的工具目录](../../../docs/tool-catalog.zh.md#deepseek-aidsh-experimental-tool-sco)给出准确的 schema 和面向模型的描述。
 
 -----
 

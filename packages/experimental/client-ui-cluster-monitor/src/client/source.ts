@@ -1,10 +1,12 @@
-/** Reconnecting browser mirrors of the Host watch list and of one watched job. */
+/** Reconnecting browser mirrors of the Host watch list, of one watched job, and of the gateway configuration overview. */
 
 import type { Context } from '@deepseek-ai/cordis'
 import { RemoteStreamCarrierError } from '@deepseek-ai/dsh-api-gateway/client'
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { ClusterJobDetail, ClusterWatchId, ClusterWatchRow } from '@deepseek-ai/dsh-experimental-cluster-monitor/types'
 import type {} from '@deepseek-ai/dsh-experimental-cluster-monitor/remote'
+import type { ScoConfigOverview } from '@deepseek-ai/dsh-experimental-sco-submit/types'
+import type {} from '@deepseek-ai/dsh-experimental-sco-submit/remote'
 
 /** Latest value of one Host stream with its carrier state; a carrier loss keeps the last value. */
 export interface Mirror<T> {
@@ -59,4 +61,13 @@ export function observeWatchList(ctx: Context): MirrorHandle<ClusterWatchRow[]> 
  */
 export function observeJob(ctx: Context, watchId: ClusterWatchId): MirrorHandle<ClusterJobDetail> {
   return mirror(ctx, `Cluster job ${watchId}`, signal => ctx.remote.cluster.followJob(watchId, signal))
+}
+
+/**
+ * Mirror the gateway configuration overview.
+ * @param ctx - Client context with the mounted `clusterConfig` namespace.
+ * @returns the overview mirror and its disposer.
+ */
+export function observeOverview(ctx: Context): MirrorHandle<ScoConfigOverview> {
+  return mirror(ctx, 'Cluster configuration', signal => ctx.remote.clusterConfig.follow(signal))
 }

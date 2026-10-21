@@ -1,15 +1,19 @@
-/** Registered data, code, and output sources, configured job templates, cached resource options, and template-based SSP submission. */
+/**
+ * Registered data, code, and output sources, configured job templates, cached resource options, template-based SSP submission,
+ * and the `clusterConfig` Remote namespace that the cluster configuration page reads and edits.
+ */
 
-import { Context, Service } from '@deepseek-ai/cordis'
+import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { z as zod } from 'zod'
-import type { ScoJobCreation } from '@deepseek-ai/dsh-experimental-sco'
+import type { ScoAfsVolume, ScoJobCreation } from '@deepseek-ai/dsh-experimental-sco'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import type { Domain } from '@deepseek-ai/dsh-storage-domain'
-import { mentions, mountPath, queueIds, RESOURCE_FAILURE, resolveSubmission, sourceName, validSource } from './resolve.ts'
+import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import { machineTypes, mentions, mountPath, queueIds, RESOURCE_FAILURE, resolveSubmission, sourceName, validSource } from './resolve.ts'
 import type {
-  ScoJobSubmitted, ScoJobTemplate, ScoQueueOption, ScoResolvedSubmission, ScoResourceOptions, ScoResourceOptionsRequest, ScoSource,
-  ScoSubmission, SubmitScoJobRequest,
+  ScoConfigOverview, ScoJobSubmitted, ScoJobTemplate, ScoQueueOption, ScoResolvedSubmission, ScoResourceOptions, ScoResourceOptionsRequest,
+  ScoSource, ScoSourceSaveRequest, ScoSubmission, SubmitScoJobRequest,
 } from './types.ts'
 
 export type * from './types.ts'
@@ -108,8 +112,9 @@ function message(error: unknown): string {
 /**
  * Composes SSP jobs from named sources and templates and submits them through `ctx.sco`.
  * Sources and resource options persist in the `sco_submit` storage domain; templates come from config.
+ * Nothing in the `clusterConfig` namespace enters a model request; the model reaches the same records through the SSP job tools.
  */
-export class ScoSubmit extends Service {
+export class ScoSubmit extends TypertRemoteService {
   static inject = ['sco', 'storageDomain']
 
   static Config: z<Config> = z.object({
@@ -120,13 +125,14 @@ export class ScoSubmit extends Service {
   private readonly templates: Readonly<Record<string, ScoJobTemplate>>
   private readonly outputMountPath: string
   private readonly domain: Promise<Domain<typeof submitDomain>>
+  private readonly listeners = new Set<() => void>()
 
   /**
    * @param ctx - Host context providing `sco` and `storageDomain`.
    * @param config - templates and the output mount path.
    */
   constructor(ctx: Context, config: Config) {
-    super(ctx, 'scoSubmit')
+    super(ctx, 'scoSubmit', { namespace: 'clusterConfig' })
     // Schema defaults fill both fields.
     const resolved = config as Required<Config>
     this.templates = resolved.templates
@@ -174,6 +180,7 @@ export class ScoSubmit extends Service {
     const table = (await this.domain).table('sources')
     if (table.get(sourceName('source name', name)) !== undefined) throw new Error(`sco-submit: source "${name}" is already registered`)
     await table.put(name, validSource(source))
+    this.changed()
   }
 
   /**
@@ -185,6 +192,7 @@ export class ScoSubmit extends Service {
     const table = (await this.domain).table('sources')
     if (table.get(sourceName('source name', name)) === undefined) throw new Error(`sco-submit: no source named "${name}" is registered`)
     await table.put(name, validSource(source))
+    this.changed()
   }
 
   /**
@@ -195,6 +203,7 @@ export class ScoSubmit extends Service {
     if (!await (await this.domain).table('sources').delete(sourceName('source name', name))) {
       throw new Error(`sco-submit: no source named "${name}" is registered`)
     }
+    this.changed()
   }
 
   /**
@@ -216,6 +225,7 @@ export class ScoSubmit extends Service {
     }
     const options: ScoResourceOptions = { workspace, fetchedAt: new Date().toISOString(), queues }
     await table.put(key, options)
+    this.changed()
     return options
   }
 
@@ -243,7 +253,7 @@ export class ScoSubmit extends Service {
     const machineType = resolved.request.machineType
     if (workspace !== undefined && machineType !== undefined) {
       const cached = (await this.domain).table('resource_options').get(this.optionsKey(workspace))
-      const missing = cached === undefined ? undefined : machineType.split(',').find(code => !cached.queues.some(queue => mentions(queue.detail, code)))
+      const missing = cached === undefined ? undefined : machineType.split(',').find((code: string) => !cached.queues.some(queue => mentions(queue.detail, code)))
       if (missing !== undefined) {
         throw new Error(`sco-submit: machine type ${missing} is not among the resource options cached for workspace ${workspace}; choose a listed one or refresh the options`)
       }
@@ -270,6 +280,103 @@ export class ScoSubmit extends Service {
       ...resolved.output === undefined ? {} : { output: resolved.output },
     })
     return { kind: 'created', resolved: resolved.request, name: creation.name, output: creation.output }
+  }
+
+  /**
+   * Read the configuration page state.
+   * @returns gateway defaults, sources, templates, and the options cached for the default workspace.
+   */
+  @Remote
+  async overview(): Promise<ScoConfigOverview> {
+    const sco = this.ctx.sco
+    const workspace = sco.workspaceOf({})
+    const domain = await this.domain
+    const cached = workspace === undefined ? undefined : domain.table('resource_options').get(this.optionsKey(workspace))
+    const byName = <T>(entries: Iterable<[string, T]>) => [...entries].toSorted(([left], [right]) => left.localeCompare(right))
+    return {
+      ...sco.profile === undefined ? {} : { profile: sco.profile },
+      ...workspace === undefined ? {} : { workspace },
+      ...sco.queueId === undefined ? {} : { queueId: sco.queueId },
+      outputMountPath: this.outputMountPath,
+      sources: byName(domain.table('sources').entries()).map(([name, source]) => ({ name, source })),
+      templates: byName(Object.entries(this.templates)).map(([name, template]) => ({ name, template })),
+      ...cached === undefined ? {} : {
+        options: {
+          workspace: cached.workspace,
+          fetchedAt: cached.fetchedAt,
+          queues: cached.queues.map(queue => ({ ...queue, machineTypes: machineTypes(queue.detail) })),
+        },
+      },
+    }
+  }
+
+  /**
+   * Follow the configuration page state: the overview now and after each source or option change.
+   * @param signal - stream lifetime.
+   * @returns complete overviews.
+   */
+  @Remote({ mode: 'stream' })
+  async *follow(signal: AbortSignal): AsyncIterable<ScoConfigOverview> {
+    let wake = Promise.withResolvers<undefined>()
+    let dirty = true
+    const aborted = (): boolean => signal.aborted
+    const notify = (): void => { dirty = true; wake.resolve(undefined) }
+    this.listeners.add(notify)
+    signal.addEventListener('abort', notify, { once: true })
+    try {
+      while (!aborted()) {
+        if (!dirty) await wake.promise
+        if (aborted()) break
+        wake = Promise.withResolvers<undefined>()
+        dirty = false
+        yield await this.overview()
+      }
+    } finally {
+      this.listeners.delete(notify)
+      signal.removeEventListener('abort', notify)
+    }
+  }
+
+  /**
+   * Register or replace a source from the configuration page.
+   * @param request - source name, locations, and whether to replace a registered source.
+   * @returns after the source is stored.
+   */
+  @Remote
+  async saveSource(request: ScoSourceSaveRequest): Promise<void> {
+    await (request.replace === true ? this.updateSource(request.name, request.source) : this.addSource(request.name, request.source))
+  }
+
+  /**
+   * Remove a source from the configuration page.
+   * @param name - registered source name.
+   * @returns after the source is deleted.
+   */
+  @Remote
+  async deleteSource(name: string): Promise<void> {
+    await this.removeSource(name)
+  }
+
+  /**
+   * Query the queues and machine types of the default workspace again and cache them.
+   * @returns after the options are stored.
+   */
+  @Remote
+  async refreshOptions(): Promise<void> {
+    await this.resourceOptions({ refresh: true })
+  }
+
+  /**
+   * List the AFS volumes the sco credentials can see, for choosing where a source lives.
+   * @returns volumes with capacity and used percentage.
+   */
+  @Remote
+  volumes(): Promise<ScoAfsVolume[]> {
+    return this.ctx.sco.listVolumes()
+  }
+
+  private changed(): void {
+    for (const listener of this.listeners) listener()
   }
 
   private optionsKey(workspace: string): string {

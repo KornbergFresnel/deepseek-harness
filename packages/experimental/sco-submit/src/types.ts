@@ -1,6 +1,6 @@
-/** Source, template, resource-option, and submission records; type aliases so tool results carry them as JSON values. */
+/** Source, template, option, submission, and `clusterConfig` Remote records; type aliases so tool results carry them as JSON values. */
 
-import type { CreateScoJobRequest, ScoFramework, ScoImageType, ScoPriority } from '@deepseek-ai/dsh-experimental-sco'
+import type { CreateScoJobRequest, ScoFramework, ScoImageType, ScoPriority } from '@deepseek-ai/dsh-experimental-sco/types'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 
 /** Cluster storage a source lives on. */
@@ -180,4 +180,36 @@ export type ScoJobSubmitted = {
   code?: { name: string; ref: string }
   data: string[]
   output?: string
+}
+
+/** One queue of the cached resource options with the machine types found in its CLI object. */
+export type ScoQueueChoice = ScoQueueOption & {
+  /** Distinct string `spec_code` values anywhere in the queue object, in first-seen order. */
+  machineTypes: string[]
+}
+
+/** Configuration state shown by the cluster configuration page. */
+export type ScoConfigOverview = {
+  /** sco profile from the gateway config; absent uses the CLI's active profile. */
+  profile?: string
+  /** Default workspace from the gateway config; absent defers to the sco profile. */
+  workspace?: string
+  /** Default queue from the gateway config; absent defers to the sco profile. */
+  queueId?: string
+  /** Container path where every job mounts its output directory. */
+  outputMountPath: string
+  /** Registered sources sorted by name. */
+  sources: { name: string; source: ScoSource }[]
+  /** Configured templates sorted by name. */
+  templates: { name: string; template: ScoJobTemplate }[]
+  /** Options cached for the default workspace; absent when none is configured or nothing is cached. */
+  options?: { workspace: string; fetchedAt: string; queues: ScoQueueChoice[] }
+}
+
+/** Request to register or replace a source from the configuration page. */
+export type ScoSourceSaveRequest = {
+  name: string
+  source: ScoSource
+  /** Replace a registered source instead of adding a new one. */
+  replace?: boolean
 }

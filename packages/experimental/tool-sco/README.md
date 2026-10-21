@@ -43,7 +43,7 @@ Add this package's bundle to a profile, or mount the function plugin after the [
 | `sco_job_logs` | `{ text, truncated }` for one log round |
 | `sco_job_create` | `{ kind: 'dry-run', job }` or `{ kind: 'created', name, output }` |
 | `sco_job_stop` | `{ names, output }` |
-| `sco_volumes_list` | JSON volume array; each volume whose capacities parse gains `UsedPercent` |
+| `sco_volumes_list` | Volume records with `id`, capacities, `usedPercent` when the capacities parse, region, zone, end time, and state |
 | `sco_volume_quota` | JSON directory quota rules for one volume |
 | `sco_sources_list` | `{ sources, templates, outputMountPath }` (needs sco-submit) |
 | `sco_source_add`, `sco_source_update` | `{ name, source }` (needs sco-submit) |
@@ -51,7 +51,7 @@ Add this package's bundle to a profile, or mount the function plugin after the [
 | `sco_resource_options` | Cached `{ workspace, fetchedAt, queues }` (needs sco-submit) |
 | `sco_job_submit` | `{ kind: 'dry-run', resolved, job }` or `{ kind: 'created', resolved, name, output }` (needs sco-submit) |
 
-With `confirmMutations` (default `true`), `sco_job_create` and `sco_job_submit` without `dryRun: true` and every `sco_job_stop` ask the user through `ctx.approval` after other pre-execute listeners allow the call; a denial from another listener stands without asking. Under the `never` approval policy these calls are rejected. Volume reads and source registration do not ask. `UsedPercent` treats capacity units as binary (`1TB` = `1024GB`). Set `confirmMutations: false` only for unattended runs that may submit and stop jobs freely. The [generated tool catalog](../../../docs/tool-catalog.md#deepseek-aidsh-experimental-tool-sco) owns the exact schemas and model-facing descriptions.
+With `confirmMutations` (default `true`), `sco_job_create` and `sco_job_submit` without `dryRun: true` and every `sco_job_stop` ask the user through `ctx.approval` after other pre-execute listeners allow the call; a denial from another listener stands without asking. Under the `never` approval policy these calls are rejected. Volume reads and source registration do not ask. `usedPercent` treats capacity units as binary (`1TB` = `1024GB`). Set `confirmMutations: false` only for unattended runs that may submit and stop jobs freely. The [generated tool catalog](../../../docs/tool-catalog.md#deepseek-aidsh-experimental-tool-sco) owns the exact schemas and model-facing descriptions.
 
 -----
 

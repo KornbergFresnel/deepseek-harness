@@ -1,4 +1,5 @@
-import { rm } from 'node:fs/promises'
+import { rm, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
@@ -73,6 +74,7 @@ describe('SSP job operations through the sco CLI', () => {
 
   it('creates jobs from flags, returning the merged spec for a dry run and the CLI output otherwise', async () => {
     const { ctx, fake } = await gateway({ queueId: '/queues/default' })
+    expect(ctx.sco.queueId).toBe('/queues/default')
     const created: unknown[] = []
     ctx.on('sco/job-created', (event) => { created.push(event) })
     const request: CreateScoJobRequest = {
@@ -143,11 +145,24 @@ describe('SSP job operations through the sco CLI', () => {
 
   it('lists AFS volumes and one volume\'s directory quota rules as the CLI\'s JSON', async () => {
     const { ctx, fake } = await gateway({ profile: 'pjlab' })
-    expect(await ctx.sco.listVolumes()).toMatchObject([{ ID: 'vol-a', TotalCapacity: '51200GB', UsedCapacity: '43TB' }, { ID: 'vol-b' }, { ID: 'vol-c' }, { ID: 'vol-d' }])
+    expect(await ctx.sco.listVolumes()).toEqual([
+      { id: 'vol-a', type: 'OCEANSTOR', totalCapacity: '51200GB', usedCapacity: '43TB', usedPercent: 86, state: 'ACTIVE' },
+      { id: 'vol-b', type: 'OCEANSTOR', totalCapacity: '500GB', usedCapacity: '16GB', usedPercent: 3.2, state: 'ACTIVE' },
+      { id: 'vol-c', type: 'OCEANSTOR', totalCapacity: '0GB', usedCapacity: '0GB', state: 'ACTIVE' },
+      { id: 'vol-d' },
+    ])
+    expect(ctx.sco.queueId).toBeUndefined()
+    await writeFile(join(fake.root, 'volumes.json'), JSON.stringify({ volumes: [] }))
+    await expect(ctx.sco.listVolumes()).rejects.toThrow('returned JSON that is not an array')
+    await writeFile(join(fake.root, 'volumes.json'), JSON.stringify([{ ID: '' }]))
+    await expect(ctx.sco.listVolumes()).rejects.toThrow('returned an entry without a string ID: {"ID":""}')
+    await writeFile(join(fake.root, 'volumes.json'), JSON.stringify(['note']))
+    await expect(ctx.sco.listVolumes()).rejects.toThrow('without a string ID: "note"')
+    await rm(join(fake.root, 'volumes.json'))
     expect(await ctx.sco.listDirectoryQuotas('vol-a')).toEqual([{ volume: 'vol-a', dir: '/data', limit: '10TB' }])
     await expect(ctx.sco.listDirectoryQuotas('-h')).rejects.toThrow('volume "-h" must start with a letter or digit')
     expect(await fake.calls()).toEqual([
-      ['--profile=pjlab', 'afs', 'volumes', 'list', '--format=json'],
+      ...Array.from({ length: 4 }, () => ['--profile=pjlab', 'afs', 'volumes', 'list', '--format=json']),
       ['--profile=pjlab', 'afs', 'volumes', 'list-dir-quota', '--instance=vol-a', '--format=json'],
     ])
   })

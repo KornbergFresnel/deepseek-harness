@@ -3320,7 +3320,7 @@ todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为
   "properties": {
     "volume": {
       "type": "string",
-      "description": "Volume ID from sco_volumes_list."
+      "description": "Volume id from sco_volumes_list."
     }
   },
   "required": [
@@ -3333,7 +3333,7 @@ todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为
 
 ### `sco_volumes_list`
 
-列出用户的 sco 凭据能看到的 AFS 存储卷：ID、TotalCapacity、UsedCapacity、UsedPercent（按二进制单位，1TB = 1024GB）、Region、Zone、EndTime 和 State。ID 可用于 sco_volume_quota 以及数据、代码和输出数据源。
+列出用户的 sco 凭据能看到的 AFS 存储卷：id、totalCapacity、usedCapacity、usedPercent（按二进制单位，1TB = 1024GB）、region、zone、endTime 和 state。id 可用于 sco_volume_quota 以及数据、代码和输出数据源。
 
 ```json
 {

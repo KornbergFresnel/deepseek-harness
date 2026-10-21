@@ -169,14 +169,13 @@ describe('SSP job tools through real Loader composition', () => {
       return Promise.resolve<ApprovalOutcome>('rejected')
     })
     const volumes = await call(ctx, agent, 'sco_volumes_list', {})
-    const listed = volumes.value as Record<string, JsonValue>[]
-    expect(listed[0]).toMatchObject({ ID: 'vol-a', TotalCapacity: '51200GB', UsedCapacity: '43TB', UsedPercent: 86 })
-    expect(listed.map(volume => volume.UsedPercent)).toEqual([86, 3.2, undefined, undefined])
+    expect(volumes.value).toEqual([
+      expect.objectContaining({ id: 'vol-a', totalCapacity: '51200GB', usedCapacity: '43TB', usedPercent: 86 }),
+      expect.objectContaining({ id: 'vol-b', usedPercent: 3.2 }),
+      expect.objectContaining({ id: 'vol-c' }),
+      { id: 'vol-d' },
+    ])
     expect(text(volumes)).toBe(JSON.stringify(volumes.value))
-    await writeFile(join(fake!.root, 'volumes.json'), JSON.stringify(['note', { ID: 'vol-e', TotalCapacity: '1TB', UsedCapacity: '512GB' }]))
-    expect((await call(ctx, agent, 'sco_volumes_list', {})).value).toEqual(['note', { ID: 'vol-e', TotalCapacity: '1TB', UsedCapacity: '512GB', UsedPercent: 50 }])
-    await writeFile(join(fake!.root, 'volumes.json'), JSON.stringify({ volumes: [] }))
-    expect((await call(ctx, agent, 'sco_volumes_list', {})).value).toEqual({ volumes: [] })
     expect((await call(ctx, agent, 'sco_volume_quota', { volume: 'vol-a' })).value).toEqual([{ volume: 'vol-a', dir: '/data', limit: '10TB' }])
     expect(asked).toBe(0)
     expect(ctx.tools.get('sco_volumes_list')!.presentCall!({})).toMatchObject({ title: 'sco_volumes_list', kind: 'search' })

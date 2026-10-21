@@ -162,9 +162,9 @@ async describeQueue(cluster: string, queue: string, signal?: AbortSignal): Promi
 /**
  * List the AFS volumes the active sco credentials can see, with capacity and state.
  * @param signal - cancellation.
- * @returns the CLI's JSON volume listing.
+ * @returns one record per volume with its used percentage; output that is not an array of objects with an `ID` fails.
  */
-async listVolumes(signal?: AbortSignal): Promise<JsonValue>
+async listVolumes(signal?: AbortSignal): Promise<ScoAfsVolume[]>
 
 /**
  * List the directory quota rules of one AFS volume.
@@ -188,7 +188,7 @@ Source: [`packages/experimental/sco/src/index.ts`](../../packages/experimental/s
 
 ### `ctx.scoSubmit` — `ScoSubmit`
 
-Composes SSP jobs from named sources and templates and submits them through `ctx.sco`. Sources and resource options persist in the `sco_submit` storage domain; templates come from config.
+Composes SSP jobs from named sources and templates and submits them through `ctx.sco`. Sources and resource options persist in the `sco_submit` storage domain; templates come from config. Nothing in the `clusterConfig` namespace enters a model request; the model reaches the same records through the SSP job tools.
 
 ```ts cordis-catalog
 /**
@@ -247,6 +247,45 @@ async resolve(request: SubmitScoJobRequest): Promise<ScoResolvedSubmission>
  * @returns the merged `TrainingJob` for a dry run, otherwise the created name and CLI output, each with the flags used.
  */
 async submit(request: SubmitScoJobRequest, signal?: AbortSignal): Promise<ScoSubmission>
+
+/**
+ * Read the configuration page state.
+ * @returns gateway defaults, sources, templates, and the options cached for the default workspace.
+ */
+@Remote async overview(): Promise<ScoConfigOverview>
+
+/**
+ * Follow the configuration page state: the overview now and after each source or option change.
+ * @param signal - stream lifetime.
+ * @returns complete overviews.
+ */
+@Remote({ mode: 'stream' }) async *follow(signal: AbortSignal): AsyncIterable<ScoConfigOverview>
+
+/**
+ * Register or replace a source from the configuration page.
+ * @param request - source name, locations, and whether to replace a registered source.
+ * @returns after the source is stored.
+ */
+@Remote async saveSource(request: ScoSourceSaveRequest): Promise<void>
+
+/**
+ * Remove a source from the configuration page.
+ * @param name - registered source name.
+ * @returns after the source is deleted.
+ */
+@Remote async deleteSource(name: string): Promise<void>
+
+/**
+ * Query the queues and machine types of the default workspace again and cache them.
+ * @returns after the options are stored.
+ */
+@Remote async refreshOptions(): Promise<void>
+
+/**
+ * List the AFS volumes the sco credentials can see, for choosing where a source lives.
+ * @returns volumes with capacity and used percentage.
+ */
+@Remote volumes(): Promise<ScoAfsVolume[]>
 ```
 
 Source: [`packages/experimental/sco-submit/src/index.ts`](../../packages/experimental/sco-submit/src/index.ts)

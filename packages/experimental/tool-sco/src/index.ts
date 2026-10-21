@@ -6,7 +6,6 @@ import type {} from '@deepseek-ai/dsh-experimental-sco'
 import type { ScoSource, ScoVolume } from '@deepseek-ai/dsh-experimental-sco-submit'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { PreToolDecision } from '@deepseek-ai/dsh-tools'
-import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 
 /** Cordis plugin name. */
 export const name = 'tool-sco'
@@ -115,28 +114,6 @@ function stringEnv(env: Record<string, unknown> | undefined): Record<string, str
     result[key] = value
   }
   return result
-}
-
-/** Binary exponents for the capacity units `sco afs volumes list` prints. */
-const UNITS: Record<string, number> = { B: 0, KB: 1, MB: 2, GB: 3, TB: 4, PB: 5 }
-
-/** Bytes in a capacity string such as `51200GB` or `43TB`, or undefined when the value is not one. */
-function capacityBytes(value: JsonValue | undefined): number | undefined {
-  const match = typeof value === 'string' ? /^(\d+(?:\.\d+)?)([KMGTP]?B)$/i.exec(value) : null
-  if (match === null) return undefined
-  return Number(match[1]) * 1024 ** (UNITS[(match[2] as string).toUpperCase()] as number)
-}
-
-/** Add `UsedPercent` to each volume whose `TotalCapacity` and `UsedCapacity` parse; other entries pass through. */
-function withUsage(listing: JsonValue): JsonValue {
-  if (!Array.isArray(listing)) return listing
-  return listing.map((volume) => {
-    if (typeof volume !== 'object' || volume === null || Array.isArray(volume)) return volume
-    const total = capacityBytes(volume.TotalCapacity)
-    const used = capacityBytes(volume.UsedCapacity)
-    if (total === undefined || used === undefined || total === 0) return volume
-    return { ...volume, UsedPercent: Math.round(used / total * 1000) / 10 }
-  })
 }
 
 const json = (value: unknown) => [{ type: 'text' as const, text: JSON.stringify(value) }]
@@ -289,11 +266,11 @@ export function apply(ctx: Context, config: Config): void {
 
   ctx.tools.register(defineTool({
     name: 'sco_volumes_list',
-    description: 'List the AFS storage volumes the user\'s sco credentials can see: ID, TotalCapacity, UsedCapacity, UsedPercent (binary units, 1TB = 1024GB), Region, Zone, EndTime, and State. Use the ID for sco_volume_quota and for data, code, and output sources.',
+    description: 'List the AFS storage volumes the user\'s sco credentials can see: id, totalCapacity, usedCapacity, usedPercent (binary units, 1TB = 1024GB), region, zone, endTime, and state. Use the id for sco_volume_quota and for data, code, and output sources.',
     parameters: {},
     output: { schema: { type: 'json' }, render: (_args, value) => json(value) },
     async execute(_args, exec) {
-      return withUsage(await ctx.sco.listVolumes(exec.signal))
+      return ctx.sco.listVolumes(exec.signal)
     },
     presentCall: args => ({ card: 'generic', title: 'sco_volumes_list', kind: 'search', rawInput: args }),
   }))
@@ -301,7 +278,7 @@ export function apply(ctx: Context, config: Config): void {
   ctx.tools.register(defineTool({
     name: 'sco_volume_quota',
     description: 'List the directory quota rules of one AFS volume.',
-    parameters: { volume: { type: 'string', required: true, description: 'Volume ID from sco_volumes_list.' } },
+    parameters: { volume: { type: 'string', required: true, description: 'Volume id from sco_volumes_list.' } },
     output: { schema: { type: 'json' }, render: (_args, value) => json(value) },
     async execute(args, exec) {
       return ctx.sco.listDirectoryQuotas(args.volume, exec.signal)

@@ -2156,10 +2156,10 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the CLI\'s JSON queue object.',
       },
       {
-        signature: 'async listVolumes(signal?: AbortSignal): Promise<JsonValue>',
+        signature: 'async listVolumes(signal?: AbortSignal): Promise<ScoAfsVolume[]>',
         description: 'List the AFS volumes the active sco credentials can see, with capacity and state.',
         parameters: [{ name: 'signal', description: 'cancellation.' }],
-        returns: 'the CLI\'s JSON volume listing.',
+        returns: 'one record per volume with its used percentage; output that is not an array of objects with an `ID` fails.',
       },
       {
         signature: 'async listDirectoryQuotas(volume: string, signal?: AbortSignal): Promise<JsonValue>',
@@ -2178,7 +2178,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
   {
     key: 'scoSubmit',
     summary: 'Composes SSP jobs from named sources and templates and submits them through `ctx.sco`.',
-    description: 'Composes SSP jobs from named sources and templates and submits them through `ctx.sco`. Sources and resource options persist in the `sco_submit` storage domain; templates come from config.',
+    description: 'Composes SSP jobs from named sources and templates and submits them through `ctx.sco`. Sources and resource options persist in the `sco_submit` storage domain; templates come from config. Nothing in the `clusterConfig` namespace enters a model request; the model reaches the same records through the SSP job tools.',
     methods: [
       {
         signature: 'async sources(): Promise<Record<string, ScoSource>>',
@@ -2224,6 +2224,42 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Expand and submit a job, or validate it with `dryRun`. A machine type absent from cached options fails before the CLI runs; a CLI failure that names a resource field refreshes the cached options before the error propagates.',
         parameters: [{ name: 'request', description: 'submission.' }, { name: 'signal', description: 'cancellation; a cancelled creation may still have been accepted remotely.' }],
         returns: 'the merged `TrainingJob` for a dry run, otherwise the created name and CLI output, each with the flags used.',
+      },
+      {
+        signature: '@Remote async overview(): Promise<ScoConfigOverview>',
+        description: 'Read the configuration page state.',
+        parameters: [],
+        returns: 'gateway defaults, sources, templates, and the options cached for the default workspace.',
+      },
+      {
+        signature: '@Remote({ mode: \'stream\' }) async *follow(signal: AbortSignal): AsyncIterable<ScoConfigOverview>',
+        description: 'Follow the configuration page state: the overview now and after each source or option change.',
+        parameters: [{ name: 'signal', description: 'stream lifetime.' }],
+        returns: 'complete overviews.',
+      },
+      {
+        signature: '@Remote async saveSource(request: ScoSourceSaveRequest): Promise<void>',
+        description: 'Register or replace a source from the configuration page.',
+        parameters: [{ name: 'request', description: 'source name, locations, and whether to replace a registered source.' }],
+        returns: 'after the source is stored.',
+      },
+      {
+        signature: '@Remote async deleteSource(name: string): Promise<void>',
+        description: 'Remove a source from the configuration page.',
+        parameters: [{ name: 'name', description: 'registered source name.' }],
+        returns: 'after the source is deleted.',
+      },
+      {
+        signature: '@Remote async refreshOptions(): Promise<void>',
+        description: 'Query the queues and machine types of the default workspace again and cache them.',
+        parameters: [],
+        returns: 'after the options are stored.',
+      },
+      {
+        signature: '@Remote volumes(): Promise<ScoAfsVolume[]>',
+        description: 'List the AFS volumes the sco credentials can see, for choosing where a source lives.',
+        parameters: [],
+        returns: 'volumes with capacity and used percentage.',
       },
     ],
   },
@@ -7180,8 +7216,16 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type ScheduleUpdateResult = {\n    readonly id: ScheduleId;\n    readonly updated: boolean;\n    readonly record: ScheduleRecord;\n} | ScheduleUpdateMiss | ScheduleToolError;',
   },
   {
+    name: 'ScoAfsVolume',
+    declaration: 'export type ScoAfsVolume = {\n    id: string;\n    name?: string;\n    type?: string;\n    totalCapacity?: string;\n    usedCapacity?: string;\n    usedPercent?: number;\n    region?: string;\n    zone?: string;\n    endTime?: string;\n    state?: string;\n};',
+  },
+  {
     name: 'ScoCodeSource',
     declaration: 'export type ScoCodeSource = {\n    kind: \'code\';\n    volume: ScoVolume;\n    root: string;\n    mountPath: string;\n    defaultRef: string;\n    setup?: string;\n    description?: string;\n};',
+  },
+  {
+    name: 'ScoConfigOverview',
+    declaration: 'export type ScoConfigOverview = {\n    profile?: string;\n    workspace?: string;\n    queueId?: string;\n    outputMountPath: string;\n    sources: {\n        name: string;\n        source: ScoSource;\n    }[];\n    templates: {\n        name: string;\n        template: ScoJobTemplate;\n    }[];\n    options?: {\n        workspace: string;\n        fetchedAt: string;\n        queues: ScoQueueChoice[];\n    };\n};',
   },
   {
     name: 'ScoDataSource',
@@ -7244,6 +7288,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type ScoPriority = \'NORMAL\' | \'HIGH\' | \'HIGHEST\';',
   },
   {
+    name: 'ScoQueueChoice',
+    declaration: 'export type ScoQueueChoice = ScoQueueOption & {\n    machineTypes: string[];\n};',
+  },
+  {
     name: 'ScoQueueOption',
     declaration: 'export type ScoQueueOption = {\n    id: string;\n    cluster: string;\n    queue: string;\n    detail: JsonValue;\n};',
   },
@@ -7262,6 +7310,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ScoSource',
     declaration: 'export type ScoSource = ScoDataSource | ScoCodeSource | ScoOutputSource;',
+  },
+  {
+    name: 'ScoSourceSaveRequest',
+    declaration: 'export type ScoSourceSaveRequest = {\n    name: string;\n    source: ScoSource;\n    replace?: boolean;\n};',
   },
   {
     name: 'ScoSubmission',

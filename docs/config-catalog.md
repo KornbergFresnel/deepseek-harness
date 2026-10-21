@@ -1216,7 +1216,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-experimental-sco`
 
 - `inject`: `subprocess`
-- `source`: [`packages/experimental/sco/src/index.ts:19`](../packages/experimental/sco/src/index.ts)
+- `source`: [`packages/experimental/sco/src/index.ts:20`](../packages/experimental/sco/src/index.ts)
 
 ```ts config-catalog
 /** Executable, sco profile selection, workspace and queue defaults, and subprocess limits. */
@@ -1245,8 +1245,8 @@ export interface Config {
 ## `@deepseek-ai/dsh-experimental-sco-submit`
 
 - `inject`: `sco` · `storageDomain`
-- `refs`: [`ScoFramework`](../packages/experimental/sco/src/index.ts) · [`ScoImageType`](../packages/experimental/sco/src/index.ts) · [`ScoPriority`](../packages/experimental/sco/src/index.ts)
-- `source`: [`packages/experimental/sco-submit/src/index.ts:18`](../packages/experimental/sco-submit/src/index.ts)
+- `refs`: `ScoFramework` (`@deepseek-ai/dsh-experimental-sco/types`) · `ScoImageType` (`@deepseek-ai/dsh-experimental-sco/types`) · `ScoPriority` (`@deepseek-ai/dsh-experimental-sco/types`)
+- `source`: [`packages/experimental/sco-submit/src/index.ts:22`](../packages/experimental/sco-submit/src/index.ts)
 
 ```ts config-catalog
 /** Job templates and the output mount path. */
@@ -1410,7 +1410,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-experimental-tool-sco`
 
 - `inject`: `tools` · `sco`
-- `source`: [`packages/experimental/tool-sco/src/index.ts:17`](../packages/experimental/tool-sco/src/index.ts)
+- `source`: [`packages/experimental/tool-sco/src/index.ts:16`](../packages/experimental/tool-sco/src/index.ts)
 
 ```ts config-catalog
 /** Approval behavior for remote mutations. */
