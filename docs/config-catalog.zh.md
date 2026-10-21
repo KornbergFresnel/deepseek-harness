@@ -1218,7 +1218,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-experimental-sco`
 
 - `inject`: `subprocess`
-- `source`: [`packages/experimental/sco/src/index.ts:20`](../packages/experimental/sco/src/index.ts)
+- `source`: [`packages/experimental/sco/src/index.ts:19`](../packages/experimental/sco/src/index.ts)
 
 ```ts config-catalog
 /** Executable, sco profile selection, workspace and queue defaults, and subprocess limits. */
@@ -1412,7 +1412,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-experimental-tool-sco`
 
 - `inject`: `tools` · `sco`
-- `source`: [`packages/experimental/tool-sco/src/index.ts:16`](../packages/experimental/tool-sco/src/index.ts)
+- `source`: [`packages/experimental/tool-sco/src/index.ts:17`](../packages/experimental/tool-sco/src/index.ts)
 
 ```ts config-catalog
 /** Approval behavior for remote mutations. */

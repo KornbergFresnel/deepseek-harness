@@ -85,7 +85,7 @@ Source: [`packages/experimental/cluster-monitor/src/index.ts`](../../packages/ex
 
 ### `ctx.sco` — `ScoGateway`
 
-Adapts `sco ssp jobs`, `workspaces list-queues`, `queues get`, `afs volumes`, and `afs dir-quota` subcommands to typed operations. Every invocation is a literal argv whose values cannot be read as options, run without a shell or sandbox confinement because the CLI needs network access and its credential profile.
+Adapts `sco ssp jobs`, `workspaces list-queues`, `queues get`, and `afs volumes list` and `list-dir-quota` subcommands to typed operations. Every invocation is a literal argv with `--flag=value` tokens, run without a shell or sandbox confinement because the CLI needs network access and its credential profile.
 
 ```ts cordis-catalog
 /**
@@ -162,27 +162,17 @@ async describeQueue(cluster: string, queue: string, signal?: AbortSignal): Promi
 /**
  * List the AFS volumes the active sco credentials can see, with capacity and state.
  * @param signal - cancellation.
- * @returns one record per table row, keyed by lowercase alphanumeric column header; empty cells are omitted.
+ * @returns the CLI's JSON volume listing.
  */
-async listVolumes(signal?: AbortSignal): Promise<ScoAfsVolume[]>
+async listVolumes(signal?: AbortSignal): Promise<JsonValue>
 
 /**
- * List the entries of one directory in an AFS volume.
- * @param volume - volume id from `listVolumes`.
- * @param directory - absolute directory inside the volume; omitted lists the volume root.
+ * List the directory quota rules of one AFS volume.
+ * @param volume - volume `ID` from `listVolumes`.
  * @param signal - cancellation.
- * @returns the CLI's listing text, whose layout the CLI does not document.
+ * @returns the CLI's JSON rule listing.
  */
-async listVolumeDirectory(volume: string, directory?: string, signal?: AbortSignal): Promise<string>
-
-/**
- * List the directory quota rules of an AFS volume.
- * @param volume - volume id from `listVolumes`.
- * @param directory - absolute directory inside the volume; omitted lists every rule.
- * @param signal - cancellation.
- * @returns the CLI's rule text, whose layout the CLI does not document.
- */
-async listDirectoryQuotas(volume: string, directory?: string, signal?: AbortSignal): Promise<string>
+async listDirectoryQuotas(volume: string, signal?: AbortSignal): Promise<JsonValue>
 
 /**
  * Resolve the workspace an operation targets on the command line.

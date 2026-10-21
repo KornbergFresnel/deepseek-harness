@@ -4,8 +4,7 @@ import { Context } from '@deepseek-ai/cordis'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import ScoGateway from '../src/index.ts'
 import type { Config, CreateScoJobRequest } from '../src/index.ts'
-import { createArgv, listArgv, logsArgv, volumeArgv } from '../src/argv.ts'
-import { parseTable } from '../src/table.ts'
+import { createArgv, listArgv, logsArgv } from '../src/argv.ts'
 import { fakeSco } from './fake-sco.ts'
 import type { FakeSco } from './fake-sco.ts'
 
@@ -142,24 +141,14 @@ describe('SSP job operations through the sco CLI', () => {
     expect(ctx.sco.workspaceOf({})).toBeUndefined()
   })
 
-  it('lists AFS volumes from the CLI table and reads directories and quota rules as text', async () => {
+  it('lists AFS volumes and one volume\'s directory quota rules as the CLI\'s JSON', async () => {
     const { ctx, fake } = await gateway({ profile: 'pjlab' })
-    expect(await ctx.sco.listVolumes()).toEqual([
-      { id: '019fc675-8a27-7a12-abad-47a872e18d81', totalcapacity: '51200GB', usedcapacity: '43TB', createtime: '2026-08-03 +0000 UTC', state: 'ACTIVE' },
-      { name: 'team', id: '019fad51-5ed2-7e37-84d1-d6f19f904219', totalcapacity: '500GB', usedcapacity: '16GB', createtime: '2026-07-29', state: 'ACTIVE' },
-      { name: 'new', id: '019f8d42-d97f-7cce-82cf-b6413fd0d314', usedcapacity: '1GB', createtime: '2026-07-23', state: 'ACTIVE' },
-      { name: 'zero', id: '019f8dc9-4464-757d-ab49-2744c08e2ff4', totalcapacity: '0GB', usedcapacity: '0GB', createtime: '2026-07-23', state: 'ACTIVE' },
-    ])
-    expect(await ctx.sco.listVolumeDirectory('vol-a')).toBe('volumes ls -i vol-a')
-    expect(await ctx.sco.listVolumeDirectory('vol-a', '/data/npz')).toBe('volumes ls -i vol-a -d /data/npz')
-    expect(await ctx.sco.listDirectoryQuotas('vol-a', '/data')).toBe('dir-quota list -i vol-a -d /data')
-    await expect(ctx.sco.listDirectoryQuotas('vol-fail')).rejects.toThrow('sco afs dir-quota list failed (7): volume not found')
+    expect(await ctx.sco.listVolumes()).toMatchObject([{ ID: 'vol-a', TotalCapacity: '51200GB', UsedCapacity: '43TB' }, { ID: 'vol-b' }, { ID: 'vol-c' }, { ID: 'vol-d' }])
+    expect(await ctx.sco.listDirectoryQuotas('vol-a')).toEqual([{ volume: 'vol-a', dir: '/data', limit: '10TB' }])
+    await expect(ctx.sco.listDirectoryQuotas('-h')).rejects.toThrow('volume "-h" must start with a letter or digit')
     expect(await fake.calls()).toEqual([
-      ['--profile=pjlab', 'afs', 'volumes', 'list'],
-      ['--profile=pjlab', 'afs', 'volumes', 'ls', '-i', 'vol-a'],
-      ['--profile=pjlab', 'afs', 'volumes', 'ls', '-i', 'vol-a', '-d', '/data/npz'],
-      ['--profile=pjlab', 'afs', 'dir-quota', 'list', '-i', 'vol-a', '-d', '/data'],
-      ['--profile=pjlab', 'afs', 'dir-quota', 'list', '-i', 'vol-fail'],
+      ['--profile=pjlab', 'afs', 'volumes', 'list', '--format=json'],
+      ['--profile=pjlab', 'afs', 'volumes', 'list-dir-quota', '--instance=vol-a', '--format=json'],
     ])
   })
 
@@ -202,28 +191,10 @@ describe('argv validation', () => {
     expect(() => listArgv({ orderBy: 'name' })).toThrow('orderBy must list created_at or duration')
     expect(listArgv({ orderBy: '+duration,-created_at' })).toEqual(['list', '--order-by=+duration,-created_at'])
     expect(() => logsArgv('job-wbt', { worker: '' })).toThrow('worker must not be empty')
-    expect(() => volumeArgv('-h')).toThrow('volume "-h" must start with a letter or digit')
-    expect(() => volumeArgv('vol-a', 'data')).toThrow('directory "data" must be an absolute path inside the volume')
   })
 
   it('rejects an empty per-request workspace', async () => {
     const { ctx } = await gateway()
     await expect(ctx.sco.listJobs({ workspace: ' ' })).rejects.toThrow('workspace must not be empty')
-  })
-})
-
-describe('sco table parsing', () => {
-  const border = '+----+-----+'
-  it('merges wrapped header and row lines, strips colors, and ignores text outside the table', () => {
-    const table = ['note: cached', border, '| ID | USED |', '|    | CAP  |', border, '| \u001b[32ma\u001b[0m  | 1TB |', '|    | 2   |', border].join('\n')
-    expect(parseTable(table, 'id')).toEqual([{ id: 'a', usedcap: '1TB 2' }])
-    expect(parseTable(' \n', 'id')).toEqual([])
-  })
-
-  it('rejects output it cannot read as rows', () => {
-    expect(() => parseTable('permission denied', 'id')).toThrow('expected a table but got: permission denied')
-    expect(() => parseTable([border, '| ID | X |', border, '| a |'].join('\n'), 'id')).toThrow('table row has 1 cells but the header has 2')
-    expect(() => parseTable([border, '| NAME |', border, '| a |'].join('\n'), 'id')).toThrow('table has no id column: NAME')
-    expect(() => parseTable([border, '| ID | X |', border, '|  | b |'].join('\n'), 'id')).toThrow('table row starts with an empty id cell')
   })
 })

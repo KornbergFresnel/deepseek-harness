@@ -1,4 +1,4 @@
-/** SenseCore SSP training-job and queue operations and AFS volume reads through the locally installed `sco` CLI. */
+/** SenseCore SSP training-job and queue operations and AFS volume listing through the locally installed `sco` CLI. */
 
 import { homedir } from 'node:os'
 import { Context, Service } from '@deepseek-ai/cordis'
@@ -7,10 +7,9 @@ import type {} from '@deepseek-ai/dsh-subprocess'
 import type { SubprocessCollectedOutputs } from '@deepseek-ai/dsh-subprocess'
 import { deadline, MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
-import { createArgv, jobName, listArgv, logsArgv, resourceName, volumeArgv } from './argv.ts'
-import { parseTable } from './table.ts'
+import { createArgv, jobName, listArgv, logsArgv, resourceName } from './argv.ts'
 import type {
-  CreateScoJobRequest, ListScoJobsRequest, ScoAfsVolume, ReadScoJobLogsRequest, ScoJobCreated, ScoJobCreation, ScoJobLogs, ScoJobStop,
+  CreateScoJobRequest, ListScoJobsRequest, ReadScoJobLogsRequest, ScoJobCreated, ScoJobCreation, ScoJobLogs, ScoJobStop,
   ScoWorkspaceRequest,
 } from './types.ts'
 
@@ -52,10 +51,9 @@ declare module '@deepseek-ai/cordis' {
 }
 
 /** `sco` command paths the gateway invokes. */
-type ScoCommand = readonly ['ssp', 'jobs' | 'workspaces' | 'queues'] | readonly ['afs', 'volumes' | 'dir-quota']
+type ScoCommand = readonly ['ssp', 'jobs' | 'workspaces' | 'queues'] | readonly ['afs', 'volumes']
 
 const JOBS = ['ssp', 'jobs'] as const
-const VOLUMES = ['afs', 'volumes'] as const
 
 /** Captured result of one CLI invocation. */
 interface Invocation {
@@ -64,8 +62,9 @@ interface Invocation {
 }
 
 /**
- * Adapts `sco ssp jobs`, `workspaces list-queues`, `queues get`, `afs volumes`, and `afs dir-quota` subcommands to typed operations.
- * Every invocation is a literal argv whose values cannot be read as options, run without a shell or
+ * Adapts `sco ssp jobs`, `workspaces list-queues`, `queues get`, and `afs volumes list` and `list-dir-quota` subcommands
+ * to typed operations.
+ * Every invocation is a literal argv with `--flag=value` tokens, run without a shell or
  * sandbox confinement because the CLI needs network access and its credential profile.
  */
 export class ScoGateway extends Service {
@@ -203,35 +202,20 @@ export class ScoGateway extends Service {
   /**
    * List the AFS volumes the active sco credentials can see, with capacity and state.
    * @param signal - cancellation.
-   * @returns one record per table row, keyed by lowercase alphanumeric column header; empty cells are omitted.
+   * @returns the CLI's JSON volume listing.
    */
-  async listVolumes(signal?: AbortSignal): Promise<ScoAfsVolume[]> {
-    const { stdout } = await this.run(VOLUMES, ['list'], signal)
-    return parseTable(stdout, 'id') as ScoAfsVolume[]
+  async listVolumes(signal?: AbortSignal): Promise<JsonValue> {
+    return this.json(['afs', 'volumes'], ['list', '--format=json'], signal)
   }
 
   /**
-   * List the entries of one directory in an AFS volume.
-   * @param volume - volume id from `listVolumes`.
-   * @param directory - absolute directory inside the volume; omitted lists the volume root.
+   * List the directory quota rules of one AFS volume.
+   * @param volume - volume `ID` from `listVolumes`.
    * @param signal - cancellation.
-   * @returns the CLI's listing text, whose layout the CLI does not document.
+   * @returns the CLI's JSON rule listing.
    */
-  async listVolumeDirectory(volume: string, directory?: string, signal?: AbortSignal): Promise<string> {
-    const { stdout } = await this.run(VOLUMES, ['ls', ...volumeArgv(volume, directory)], signal)
-    return stdout.trim()
-  }
-
-  /**
-   * List the directory quota rules of an AFS volume.
-   * @param volume - volume id from `listVolumes`.
-   * @param directory - absolute directory inside the volume; omitted lists every rule.
-   * @param signal - cancellation.
-   * @returns the CLI's rule text, whose layout the CLI does not document.
-   */
-  async listDirectoryQuotas(volume: string, directory?: string, signal?: AbortSignal): Promise<string> {
-    const { stdout } = await this.run(['afs', 'dir-quota'], ['list', ...volumeArgv(volume, directory)], signal)
-    return stdout.trim()
+  async listDirectoryQuotas(volume: string, signal?: AbortSignal): Promise<JsonValue> {
+    return this.json(['afs', 'volumes'], ['list-dir-quota', `--instance=${resourceName('volume', volume)}`, '--format=json'], signal)
   }
 
   /**

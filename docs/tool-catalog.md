@@ -45,7 +45,7 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`, `owning Agent session` | `tool/call`, `todo/write`, `tool/result` | - | todo_write is session-owned state; UIs render the latest todo/write event as a checklist. `allowParallelInProgress` is required with no default, so the catalog states its choice: `true`, whose description invites several `in_progress` items. A deployment choosing `false` receives the same tool with a description asking for exactly one active task. |
 | `@deepseek-ai/dsh-tool-working-directory` | `working_directory` | `ctx.tools`, `ctx.workingDirectory` | `tool/call`, `working-directory/change`, `user context for directory changes`, `tool/result` | - | Reads or changes the calling Session directory. Existing shells and processes retain their own directories; origin metadata and permission roots stay fixed. |
 | `@deepseek-ai/dsh-experimental-tool-worktree` | `create_worktree` | `ctx.tools`, `ctx.worktrees`, `a calling Agent` | `tool/call`, `Git branch and checkout`, `working-directory/change`, `tool/result` | - | Explicit experimental composition only. Creates a new branch and checkout from a pinned local commit under existing write permissions, then changes the Session directory. Leaving retains the branch and checkout. |
-| `@deepseek-ai/dsh-experimental-tool-sco` | `sco_job_create`, `sco_job_describe`, `sco_job_list`, `sco_job_logs`, `sco_job_stop`, `sco_job_submit`, `sco_job_workers`, `sco_resource_options`, `sco_source_add`, `sco_source_remove`, `sco_source_update`, `sco_sources_list`, `sco_volume_ls`, `sco_volume_quota`, `sco_volumes_list` | `ctx.tools`, `ctx.sco`, `ctx.scoSubmit for sources and template submission`, `ctx.approval for submission and stop` | `tool/call`, `SenseCore SSP training jobs`, `registered sources`, `tool/result` | - | Explicit experimental composition only. Runs the local sco CLI; submission without dryRun and stop ask the user unless confirmMutations is false. Source, resource-option, and template-submission tools appear only while sco-submit is mounted. |
+| `@deepseek-ai/dsh-experimental-tool-sco` | `sco_job_create`, `sco_job_describe`, `sco_job_list`, `sco_job_logs`, `sco_job_stop`, `sco_job_submit`, `sco_job_workers`, `sco_resource_options`, `sco_source_add`, `sco_source_remove`, `sco_source_update`, `sco_sources_list`, `sco_volume_quota`, `sco_volumes_list` | `ctx.tools`, `ctx.sco`, `ctx.scoSubmit for sources and template submission`, `ctx.approval for submission and stop` | `tool/call`, `SenseCore SSP training jobs`, `registered sources`, `tool/result` | - | Explicit experimental composition only. Runs the local sco CLI; submission without dryRun and stop ask the user unless confirmMutations is false. Source, resource-option, and template-submission tools appear only while sco-submit is mounted. |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`, `ctx.workflowEngine`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents the script children)` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-workspace-dependencies` | `load_workspace_dependencies` | `ctx.tools` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`, `web_search` | `ctx.tools`, `ctx.web`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps. |
@@ -3122,7 +3122,7 @@ Source: [`packages/experimental/tool-sco/src/index.ts`](../packages/experimental
 
 ### `sco_source_add`
 
-Register a new data, code, or output source location on cluster storage. Ask the user for the volume and directory, offering volumes from sco_volumes_list and checking the directory with sco_volume_ls; never guess them.
+Register a new data, code, or output source location on cluster storage. Ask the user for the volume and directory, offering volumes from sco_volumes_list; never guess them.
 
 ```json
 {
@@ -3303,34 +3303,9 @@ List registered data, code, and output sources, configured job templates, and th
 
 Source: [`packages/experimental/tool-sco/src/index.ts`](../packages/experimental/tool-sco/src/index.ts)
 
-### `sco_volume_ls`
-
-List the entries of a directory in an AFS volume, for example to confirm a dataset or code path before registering a source.
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "volume": {
-      "type": "string",
-      "description": "AFS volume id from sco_volumes_list."
-    },
-    "directory": {
-      "type": "string",
-      "description": "Absolute directory inside the volume, starting with /. Omit for the volume root."
-    }
-  },
-  "required": [
-    "volume"
-  ]
-}
-```
-
-Source: [`packages/experimental/tool-sco/src/index.ts`](../packages/experimental/tool-sco/src/index.ts)
-
 ### `sco_volume_quota`
 
-List the directory quota rules of an AFS volume, optionally for one directory.
+List the directory quota rules of one AFS volume.
 
 ```json
 {
@@ -3338,11 +3313,7 @@ List the directory quota rules of an AFS volume, optionally for one directory.
   "properties": {
     "volume": {
       "type": "string",
-      "description": "AFS volume id from sco_volumes_list."
-    },
-    "directory": {
-      "type": "string",
-      "description": "Absolute directory inside the volume, starting with /. Omit for the volume root."
+      "description": "Volume ID from sco_volumes_list."
     }
   },
   "required": [
@@ -3355,7 +3326,7 @@ Source: [`packages/experimental/tool-sco/src/index.ts`](../packages/experimental
 
 ### `sco_volumes_list`
 
-List the AFS storage volumes the user's sco credentials can see, with id, total and used capacity, usedPercent, region, zone, expiry, and state. Capacity units are binary (1TB = 1024GB). Use the id for sco_volume_ls, sco_volume_quota, and sources.
+List the AFS storage volumes the user's sco credentials can see: ID, TotalCapacity, UsedCapacity, UsedPercent (binary units, 1TB = 1024GB), Region, Zone, EndTime, and State. Use the ID for sco_volume_quota and for data, code, and output sources.
 
 ```json
 {

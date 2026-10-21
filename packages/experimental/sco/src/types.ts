@@ -122,9 +122,3 @@ export interface ScoJobCreated {
   /** Workspace named on the command line; absent when the sco profile supplied it. */
   workspace?: string
 }
-
-/** One row of `sco afs volumes list`, keyed by lowercase alphanumeric column header such as `totalcapacity`; empty cells are omitted. */
-export type ScoAfsVolume = Record<string, string> & {
-  /** Volume id used by `--volume-mount` and the other `sco afs` commands. */
-  id: string
-}

@@ -49,7 +49,7 @@
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`、`owning Agent session` | `tool/call`、`todo/write`、`tool/result` | - | todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为检查清单。`allowParallelInProgress` 是没有默认值的必填项，因此本目录明确选择 `true`，对应描述允许同时存在多个 `in_progress` 项。选择 `false` 的部署会获得同一工具，但描述会要求只能有 1 个活动任务。 |
 | `@deepseek-ai/dsh-tool-working-directory` | `working_directory` | `ctx.tools`, `ctx.workingDirectory` | `tool/call`, `working-directory/change`, `user context for directory changes`, `tool/result` | - | 读取或改变调用方 Session 的目录。已有 shell 和进程保留自己的目录；原始元数据和权限根目录保持不变。 |
 | `@deepseek-ai/dsh-experimental-tool-worktree` | `create_worktree` | `ctx.tools`, `ctx.worktrees`, `a calling Agent` | `tool/call`, `Git branch and checkout`, `working-directory/change`, `tool/result` | - | 仅通过显式实验组合加载。在现有写权限下从固定的本地提交创建新分支与检出目录，再改变 Session 工作目录。离开时保留分支与检出目录。 |
-| `@deepseek-ai/dsh-experimental-tool-sco` | `sco_job_create`, `sco_job_describe`, `sco_job_list`, `sco_job_logs`, `sco_job_stop`, `sco_job_submit`, `sco_job_workers`, `sco_resource_options`, `sco_source_add`, `sco_source_remove`, `sco_source_update`, `sco_sources_list`, `sco_volume_ls`, `sco_volume_quota`, `sco_volumes_list` | `ctx.tools`, `ctx.sco`, `ctx.scoSubmit for sources and template submission`, `ctx.approval for submission and stop` | `tool/call`, `SenseCore SSP training jobs`, `registered sources`, `tool/result` | - | 仅通过显式实验组合加载。运行本地 sco CLI；除非 confirmMutations 为 false，否则未设置 dryRun 的提交和停止都会询问用户。数据源、资源选项和按模板提交的工具只在挂载 sco-submit 时出现。 |
+| `@deepseek-ai/dsh-experimental-tool-sco` | `sco_job_create`, `sco_job_describe`, `sco_job_list`, `sco_job_logs`, `sco_job_stop`, `sco_job_submit`, `sco_job_workers`, `sco_resource_options`, `sco_source_add`, `sco_source_remove`, `sco_source_update`, `sco_sources_list`, `sco_volume_quota`, `sco_volumes_list` | `ctx.tools`, `ctx.sco`, `ctx.scoSubmit for sources and template submission`, `ctx.approval for submission and stop` | `tool/call`, `SenseCore SSP training jobs`, `registered sources`, `tool/result` | - | 仅通过显式实验组合加载。运行本地 sco CLI；除非 confirmMutations 为 false，否则未设置 dryRun 的提交和停止都会询问用户。数据源、资源选项和按模板提交的工具只在挂载 sco-submit 时出现。 |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`、`ctx.workflowEngine`、`ctx.systemPrompt`、`a calling Agent (exec.agent parents the script children)` | `tool/call`、`tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-workspace-dependencies` | `load_workspace_dependencies` | `ctx.tools` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`、`web_search` | `ctx.tools`、`ctx.web`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可见 schema 在更换后端时保持稳定。 |
@@ -3129,7 +3129,7 @@ todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为
 
 ### `sco_source_add`
 
-登记集群存储上新的数据、代码或输出位置。向用户询问卷和目录，用 sco_volumes_list 提供可选的卷，用 sco_volume_ls 确认目录，不要猜测。
+登记集群存储上新的数据、代码或输出位置。向用户询问卷和目录，用 sco_volumes_list 提供可选的卷，不要猜测。
 
 ```json
 {
@@ -3310,34 +3310,9 @@ todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为
 
 来源：[`packages/experimental/tool-sco/src/index.ts`](../packages/experimental/tool-sco/src/index.ts)
 
-### `sco_volume_ls`
-
-列出 AFS 存储卷中某个目录的内容，例如在登记数据源前确认数据集或代码路径。
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "volume": {
-      "type": "string",
-      "description": "AFS volume id from sco_volumes_list."
-    },
-    "directory": {
-      "type": "string",
-      "description": "Absolute directory inside the volume, starting with /. Omit for the volume root."
-    }
-  },
-  "required": [
-    "volume"
-  ]
-}
-```
-
-来源：[`packages/experimental/tool-sco/src/index.ts`](../packages/experimental/tool-sco/src/index.ts)
-
 ### `sco_volume_quota`
 
-列出 AFS 存储卷的目录配额规则，可只看一个目录。
+列出一个 AFS 存储卷的目录配额规则。
 
 ```json
 {
@@ -3345,11 +3320,7 @@ todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为
   "properties": {
     "volume": {
       "type": "string",
-      "description": "AFS volume id from sco_volumes_list."
-    },
-    "directory": {
-      "type": "string",
-      "description": "Absolute directory inside the volume, starting with /. Omit for the volume root."
+      "description": "Volume ID from sco_volumes_list."
     }
   },
   "required": [
@@ -3362,7 +3333,7 @@ todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为
 
 ### `sco_volumes_list`
 
-列出用户的 sco 凭据能看到的 AFS 存储卷，包括 id、总容量和已用容量、usedPercent、地域、可用区、到期时间和状态。容量按二进制单位换算（1TB = 1024GB）。id 可用于 sco_volume_ls、sco_volume_quota 和数据源。
+列出用户的 sco 凭据能看到的 AFS 存储卷：ID、TotalCapacity、UsedCapacity、UsedPercent（按二进制单位，1TB = 1024GB）、Region、Zone、EndTime 和 State。ID 可用于 sco_volume_quota 以及数据、代码和输出数据源。
 
 ```json
 {
