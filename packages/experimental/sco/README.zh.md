@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-在 Host 上通过用户自己的 `sco` CLI 和凭据 profile 列出、查看、读取日志、提交和停止 SenseCore SSP 训练任务，并读取工作空间的队列。每个操作是一次带截止时间、参数为字面值的 CLI 调用；列表和详情原样返回 CLI 的 JSON。
+在 Host 上通过用户自己的 `sco` CLI 和凭据 profile 列出、查看、读取日志、提交和停止 SenseCore SSP 训练任务，读取工作空间的队列，并读取 AFS 存储卷、目录和配额规则。每个操作是一次带截止时间、参数为字面值的 CLI 调用；列表和详情原样返回 CLI 的 JSON。
 
 ## 目录
 
@@ -46,7 +46,7 @@ kind: "package-reference"
 | `graceMs` | `3000` | 子进程终止宽限期 |
 | `maxOutputBytes` | `1048576` | 每个输出流捕获的字节数 |
 
-`ctx.sco` 提供 `listJobs(request?)`、`describeJob(name, request?)`、`listWorkers(name, request?)`、`readLogs(name, request?)`、`createJob(request)` 和 `stopJobs(names, request?)`，均可传入可选的 `AbortSignal`。列表、详情和 Worker 查询返回 CLI `--format=json` 输出的 JSON。`readLogs` 读取一轮不跟随的 `stream-logs`，输出超过 `maxOutputBytes` 时保留尾部并设置 `truncated`；其他操作在输出超限时失败。`createJob` 把字段映射为参数化 `sco ssp jobs create` 的标志；设置 `dryRun` 时返回合并后的 `TrainingJob` 而不创建任务，否则返回 CLI 输出。`stopJobs` 接受 1 到 100 个任务名。非零退出码会以 CLI 的 stderr 报错，stderr 为空时使用 stdout。非 dry-run 的 `createJob` 成功后会发出带任务名和解析后工作空间的 `sco/job-created` 事件，[cluster-monitor](../cluster-monitor/README.zh.md) 用它自动关注新任务。`listQueues(request?)` 对解析出的工作空间执行 `sco ssp workspaces list-queues`，解析不到工作空间时失败；`describeQueue(cluster, queue)` 执行 `sco ssp queues get`，返回的对象列出该队列接受的机型。`workspaceOf(request)` 和 `profile` 给出解析后的工作空间和配置的 profile，[sco-submit](../sco-submit/README.zh.md) 用它们作为缓存选项的键。
+`ctx.sco` 提供 `listJobs(request?)`、`describeJob(name, request?)`、`listWorkers(name, request?)`、`readLogs(name, request?)`、`createJob(request)` 和 `stopJobs(names, request?)`，均可传入可选的 `AbortSignal`。列表、详情和 Worker 查询返回 CLI `--format=json` 输出的 JSON。`readLogs` 读取一轮不跟随的 `stream-logs`，输出超过 `maxOutputBytes` 时保留尾部并设置 `truncated`；其他操作在输出超限时失败。`createJob` 把字段映射为参数化 `sco ssp jobs create` 的标志；设置 `dryRun` 时返回合并后的 `TrainingJob` 而不创建任务，否则返回 CLI 输出。`stopJobs` 接受 1 到 100 个任务名。非零退出码会以 CLI 的 stderr 报错，stderr 为空时使用 stdout。非 dry-run 的 `createJob` 成功后会发出带任务名和解析后工作空间的 `sco/job-created` 事件，[cluster-monitor](../cluster-monitor/README.zh.md) 用它自动关注新任务。`listQueues(request?)` 对解析出的工作空间执行 `sco ssp workspaces list-queues`，解析不到工作空间时失败；`describeQueue(cluster, queue)` 执行 `sco ssp queues get`，返回的对象列出该队列接受的机型。`workspaceOf(request)` 和 `profile` 给出解析后的工作空间和配置的 profile，[sco-submit](../sco-submit/README.zh.md) 用它们作为缓存选项的键。`listVolumes()` 执行 `sco afs volumes list`，列出当前凭据能看到的存储卷，每个表格行返回一条记录，键是去掉空格并转为小写的列名（`id`、`totalcapacity`、`usedcapacity`、`state` 等）；某行缺少 `id` 单元格或输出不是表格时失败。`listVolumeDirectory(volume, directory?)` 和 `listDirectoryQuotas(volume, directory?)` 分别执行 `sco afs volumes ls` 和 `sco afs dir-quota list` 并返回其文本；`directory` 必须以 `/` 开头。
 
 -----
 
@@ -60,9 +60,10 @@ kind: "package-reference"
 |---|---|
 | [`src/index.ts`](src/index.ts) | 解析默认值，在截止时间内执行一次调用，解析 JSON，分类失败 |
 | [`src/argv.ts`](src/argv.ts) | 校验名称与取值，构造 `--flag=value` 参数 |
+| [`src/table.ts`](src/table.ts) | 解析 `sco afs` 打印的带边框表格 |
 | [`src/types.ts`](src/types.ts) | 请求与结果记录 |
 
-每个值都作为单个 `--flag=value` 参数传递，任务名必须符合 SSP 命名规则，因此请求中的值不会被解析成其他选项。CLI 通过 `ctx.subprocess` 运行，不经过 shell，也不受沙箱约束，因为它需要网络访问和用户主目录下的凭据 profile。创建和停止不是幂等操作；被取消或超时的调用可能已经在远端生效。服务销毁时会中止进行中的调用。
+SSP 的值都作为单个 `--flag=value` 参数传递，任务名必须符合 SSP 命名规则，`sco afs` 的卷 id 和目录必须以字母、数字或 `/` 开头，因此请求中的值不会被解析成其他选项。`sco afs` 没有 JSON 输出，表格解析器把前两条边框之间的行作为表头，并把 `id` 单元格为空的行拼接到上一行，因为 CLI 会在空格处折行显示过长的单元格。CLI 通过 `ctx.subprocess` 运行，不经过 shell，也不受沙箱约束，因为它需要网络访问和用户主目录下的凭据 profile。创建和停止不是幂等操作；被取消或超时的调用可能已经在远端生效。服务销毁时会中止进行中的调用。
 
 </details>
 
@@ -91,6 +92,7 @@ kind: "package-reference"
 
 - **仅支持参数化创建** — 未提供完整 `TrainingJob` 文件（`--config`）、按实例覆盖的 `--workload-file` 和 `copy`，异构实例组和 Ray 集群规格需要直接使用 CLI。
 - **CLI 不受沙箱约束** — Session 沙箱不作用于 `sco`；远端变更由工具包的审批关卡控制。
+- **只读存储卷** — 只列出和读取 AFS 存储卷，不创建或修改；未提供 AOSS 桶用量和 `sco cms metrics` 容量历史，`ls` 和 `dir-quota` 的文本也不解析，因为 CLI 没有说明这两种输出格式。
 - **不跟随日志** — 日志每次读取一轮；未提供 `--follow` 流式输出和文件输出。
 
 <a id="dev-note"></a>

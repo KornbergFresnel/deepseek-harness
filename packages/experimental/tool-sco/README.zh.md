@@ -9,7 +9,7 @@ kind: "package-bundle"
 
 ## 概述
 
-让模型通过用户本地的 `sco` CLI 管理 SenseCore SSP 训练任务。六个工具分别用于列出任务、查看任务、列出 Worker、读取日志、提交任务和停止任务。挂载 [sco-submit](../sco-submit/README.zh.md) 后，另外六个工具用于登记数据、代码和输出位置，读取缓存的队列和机型选项，以及按模板组合并提交任务。默认情况下提交和停止前会先询问用户；dry run 提交只校验任务，不会询问。
+让模型通过用户本地的 `sco` CLI 管理 SenseCore SSP 训练任务。六个工具分别用于列出任务、查看任务、列出 Worker、读取日志、提交任务和停止任务，另外三个读取 AFS 存储：带容量的存储卷列表、目录内容和目录配额规则。挂载 [sco-submit](../sco-submit/README.zh.md) 后，另外六个工具用于登记数据、代码和输出位置，读取缓存的队列和机型选项，以及按模板组合并提交任务。默认情况下提交和停止前会先询问用户；dry run 提交只校验任务，不会询问。
 
 ## 目录
 
@@ -43,13 +43,15 @@ kind: "package-bundle"
 | `sco_job_logs` | 一轮日志的 `{ text, truncated }` |
 | `sco_job_create` | `{ kind: 'dry-run', job }` 或 `{ kind: 'created', name, output }` |
 | `sco_job_stop` | `{ names, output }` |
+| `sco_volumes_list` | `{ volumes }`：每个存储卷一条记录，两个容量单元格都能解析时带 `usedPercent` |
+| `sco_volume_ls`、`sco_volume_quota` | 卷目录或其配额规则的 CLI 文本 |
 | `sco_sources_list` | `{ sources, templates, outputMountPath }`（需要 sco-submit） |
 | `sco_source_add`、`sco_source_update` | `{ name, source }`（需要 sco-submit） |
 | `sco_source_remove` | `{ removed }`（需要 sco-submit） |
 | `sco_resource_options` | 缓存的 `{ workspace, fetchedAt, queues }`（需要 sco-submit） |
 | `sco_job_submit` | `{ kind: 'dry-run', resolved, job }` 或 `{ kind: 'created', resolved, name, output }`（需要 sco-submit） |
 
-开启 `confirmMutations`（默认 `true`）时，未设置 `dryRun: true` 的 `sco_job_create`、`sco_job_submit` 和所有 `sco_job_stop`，在其他 pre-execute 监听器允许调用后，会通过 `ctx.approval` 询问用户；其他监听器的拒绝直接生效，不再询问。在 `never` 审批策略下这些调用会被拒绝。登记数据源只改动本地存储，不会询问。只有在允许无人值守地自由提交和停止任务时，才设置 `confirmMutations: false`。[生成的工具目录](../../../docs/tool-catalog.zh.md#deepseek-aidsh-experimental-tool-sco)给出准确的 schema 和面向模型的描述。
+开启 `confirmMutations`（默认 `true`）时，未设置 `dryRun: true` 的 `sco_job_create`、`sco_job_submit` 和所有 `sco_job_stop`，在其他 pre-execute 监听器允许调用后，会通过 `ctx.approval` 询问用户；其他监听器的拒绝直接生效，不再询问。在 `never` 审批策略下这些调用会被拒绝。读取存储卷和登记数据源都不会询问。`usedPercent` 按二进制单位换算容量（`1TB` = `1024GB`）。只有在允许无人值守地自由提交和停止任务时，才设置 `confirmMutations: false`。[生成的工具目录](../../../docs/tool-catalog.zh.md#deepseek-aidsh-experimental-tool-sco)给出准确的 schema 和面向模型的描述。
 
 -----
 
@@ -59,7 +61,7 @@ kind: "package-bundle"
 <details>
 <summary>实现细节——点击展开</summary>
 
-[`cordis.patch.yml`](cordis.patch.yml) 插入 `sco` 网关、`sco-submit` 和 `tool-sco` 三行。[`src/index.ts`](src/index.ts) 注册六个类型化工具，转发给 `ctx.sco`，并把规范值渲染为 JSON；日志例外，渲染为带截断标记的文本。它在 `ctx.inject(['scoSubmit'])` 内注册数据源、选项和提交工具，转发给 `ctx.scoSubmit`，该服务卸载时这些工具随之消失；数据源工具接受扁平参数，并拒绝该类型用不到的字段。审批关卡是一个 `tools/pre-execute` 监听器，先委托给后续监听器，只把 `allow` 转为 `ask`。Host 展示使用通用卡片。销毁时会注销工具和监听器。
+[`cordis.patch.yml`](cordis.patch.yml) 插入 `sco` 网关、`sco-submit` 和 `tool-sco` 三行。[`src/index.ts`](src/index.ts) 注册九个类型化工具，转发给 `ctx.sco`，并把规范值渲染为 JSON；日志和存储卷文本例外，渲染为文本，日志带截断标记。它在 `ctx.inject(['scoSubmit'])` 内注册数据源、选项和提交工具，转发给 `ctx.scoSubmit`，该服务卸载时这些工具随之消失；数据源工具接受扁平参数，并拒绝该类型用不到的字段。审批关卡是一个 `tools/pre-execute` 监听器，先委托给后续监听器，只把 `allow` 转为 `ask`。Host 展示使用通用卡片。销毁时会注销工具和监听器。
 
 </details>
 
@@ -86,7 +88,7 @@ kind: "package-bundle"
 
 #### Token 影响
 
-六个任务 schema，以及挂载 sco-submit 时额外的六个，在每次请求中有固定开销。每次调用会把参数和结果追加到工具历史；列表和日志受网关 `maxOutputBytes` 限制。
+九个任务和存储卷 schema，以及挂载 sco-submit 时额外的六个，在每次请求中有固定开销。每次调用会把参数和结果追加到工具历史；列表和日志受网关 `maxOutputBytes` 限制。
 
 #### KV Cache 影响
 

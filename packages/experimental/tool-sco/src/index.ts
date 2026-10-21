@@ -1,8 +1,8 @@
-/** Model tools for SenseCore SSP training jobs and template-based submission, with approval before creation and stop. */
+/** Model tools for SenseCore SSP training jobs, AFS volume reads, and template-based submission, with approval before creation and stop. */
 
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import type {} from '@deepseek-ai/dsh-experimental-sco'
+import type { ScoAfsVolume } from '@deepseek-ai/dsh-experimental-sco'
 import type { ScoSource, ScoVolume } from '@deepseek-ai/dsh-experimental-sco-submit'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { PreToolDecision } from '@deepseek-ai/dsh-tools'
@@ -115,6 +115,27 @@ function stringEnv(env: Record<string, unknown> | undefined): Record<string, str
   }
   return result
 }
+
+/** Binary multipliers for the capacity units `sco afs volumes list` prints. */
+const UNITS: Record<string, number> = { B: 0, KB: 1, MB: 2, GB: 3, TB: 4, PB: 5 }
+
+/** Bytes in a capacity cell such as `51200GB` or `43TB`, or undefined when the text is not one. */
+function capacityBytes(text: string | undefined): number | undefined {
+  const match = /^(\d+(?:\.\d+)?)\s*([KMGTP]?)i?B$/i.exec(text ?? '')
+  if (match === null) return undefined
+  return Number(match[1]) * 1024 ** (UNITS[`${match[2]}B`.toUpperCase()] as number)
+}
+
+/** Used capacity as a percentage of total with one decimal, or undefined when either cell is not a capacity. */
+function usedPercent(volume: ScoAfsVolume): number | undefined {
+  const total = capacityBytes(volume.totalcapacity)
+  const used = capacityBytes(volume.usedcapacity)
+  if (total === undefined || used === undefined || total === 0) return undefined
+  return Math.round(used / total * 1000) / 10
+}
+
+const VOLUME_ID = { type: 'string', required: true, description: 'AFS volume id from sco_volumes_list.' } as const
+const DIRECTORY = { type: 'string', description: 'Absolute directory inside the volume, starting with /. Omit for the volume root.' } as const
 
 const json = (value: unknown) => [{ type: 'text' as const, text: JSON.stringify(value) }]
 
@@ -264,6 +285,45 @@ export function apply(ctx: Context, config: Config): void {
     presentCall: args => ({ card: 'generic', title: `sco_job_stop ${args.names.join(' ')}`, rawInput: args }),
   }))
 
+  ctx.tools.register(defineTool({
+    name: 'sco_volumes_list',
+    description: 'List the AFS storage volumes the user\'s sco credentials can see, with id, total and used capacity, usedPercent, region, zone, expiry, and state. Capacity units are binary (1TB = 1024GB). Use the id for sco_volume_ls, sco_volume_quota, and sources.',
+    parameters: {},
+    output: { schema: { type: 'object', additionalProperties: false, properties: { volumes: { type: 'json', required: true } } }, render: (_args, value) => json(value) },
+    async execute(_args, exec) {
+      const volumes = await ctx.sco.listVolumes(exec.signal)
+      return {
+        volumes: volumes.map((volume) => {
+          const percent = usedPercent(volume)
+          return percent === undefined ? volume : { ...volume, usedPercent: percent }
+        }),
+      }
+    },
+    presentCall: args => ({ card: 'generic', title: 'sco_volumes_list', kind: 'search', rawInput: args }),
+  }))
+
+  for (const [name, description, read] of [
+    [
+      'sco_volume_ls', 'List the entries of a directory in an AFS volume, for example to confirm a dataset or code path before registering a source.',
+      (volume: string, directory: string | undefined, signal: AbortSignal) => ctx.sco.listVolumeDirectory(volume, directory, signal),
+    ],
+    [
+      'sco_volume_quota', 'List the directory quota rules of an AFS volume, optionally for one directory.',
+      (volume: string, directory: string | undefined, signal: AbortSignal) => ctx.sco.listDirectoryQuotas(volume, directory, signal),
+    ],
+  ] as const) {
+    ctx.tools.register(defineTool({
+      name,
+      description,
+      parameters: { volume: VOLUME_ID, directory: DIRECTORY },
+      output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: value }] },
+      async execute(args, exec) {
+        return read(args.volume, args.directory, exec.signal)
+      },
+      presentCall: args => ({ card: 'generic', title: `${name} ${args.volume}${args.directory ?? ''}`, kind: 'read', rawInput: args }),
+    }))
+  }
+
   ctx.inject(['scoSubmit'], (scope) => {
     registerSubmissionTools(scope)
   })
@@ -299,7 +359,7 @@ function registerSubmissionTools(ctx: Context): void {
   }))
 
   for (const [name, verb, description] of [
-    ['sco_source_add', 'add', 'Register a new data, code, or output source location on cluster storage. Ask the user for the volume and directory; never guess them.'],
+    ['sco_source_add', 'add', 'Register a new data, code, or output source location on cluster storage. Ask the user for the volume and directory, offering volumes from sco_volumes_list and checking the directory with sco_volume_ls; never guess them.'],
     ['sco_source_update', 'update', 'Replace every field of a registered source.'],
   ] as const) {
     ctx.tools.register(defineTool({

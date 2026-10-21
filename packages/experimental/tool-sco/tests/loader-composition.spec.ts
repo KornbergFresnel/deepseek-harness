@@ -65,7 +65,7 @@ async function boot(toolConfig: string[] = [], submit = false): Promise<{ ctx: C
   ])
   const config = [...modules.keys()].flatMap(name => [
     `- name: 'cordis:${name}'`,
-    ...name === '@deepseek-ai/dsh-experimental-sco' ? ['  config:', `    command: '${fake!.command}'`, '    workspace: team-a', '    maxOutputBytes: 1024'] : [],
+    ...name === '@deepseek-ai/dsh-experimental-sco' ? ['  config:', `    command: '${fake!.command}'`, '    workspace: team-a', '    maxOutputBytes: 2048'] : [],
     ...name === '@deepseek-ai/dsh-experimental-tool-sco' && toolConfig.length > 0 ? ['  config:', ...toolConfig.map(line => `    ${line}`)] : [],
     ...name === '@deepseek-ai/dsh-agent-loop' ? ['  config:', '    agents: []'] : [],
     ...name === '@deepseek-ai/dsh-storage-json' ? ['  config:', `    root: '${join(root!, 'store')}'`] : [],
@@ -161,6 +161,31 @@ describe('SSP job tools through real Loader composition', () => {
     expect(ctx.tools.schemas().some(schema => schema.name.startsWith('sco_'))).toBe(false)
   })
 
+  it('lists AFS volumes with used percentages and reads directories and quota rules without asking', async () => {
+    const { ctx, agent } = await boot()
+    let asked = 0
+    ctx.on('approval/request', () => {
+      asked += 1
+      return Promise.resolve<ApprovalOutcome>('rejected')
+    })
+    const volumes = await call(ctx, agent, 'sco_volumes_list', {})
+    const listed = (volumes.value as { volumes: Record<string, JsonValue>[] }).volumes
+    expect(listed[0]).toMatchObject({ id: '019fc675-8a27-7a12-abad-47a872e18d81', totalcapacity: '51200GB', usedcapacity: '43TB' })
+    expect(listed.map(volume => volume.usedPercent)).toEqual([86, 3.2, undefined, undefined])
+    expect(text(volumes)).toBe(JSON.stringify(volumes.value))
+    const ls = await call(ctx, agent, 'sco_volume_ls', { volume: 'vol-a', directory: '/data' })
+    expect(ls.value).toBe('volumes ls -i vol-a -d /data')
+    expect(text(ls)).toBe('volumes ls -i vol-a -d /data')
+    expect((await call(ctx, agent, 'sco_volume_quota', { volume: 'vol-a' })).value).toBe('dir-quota list -i vol-a')
+    expect(text(await call(ctx, agent, 'sco_volume_ls', { volume: 'vol-a', directory: 'data' }))).toContain('must be an absolute path')
+    expect(asked).toBe(0)
+
+    const tool = (name: string) => (args: Record<string, JsonValue>) => ctx.tools.get(name)!.presentCall!(args)
+    expect(tool('sco_volumes_list')({})).toMatchObject({ title: 'sco_volumes_list', kind: 'search' })
+    expect(tool('sco_volume_ls')({ volume: 'vol-a', directory: '/data' })).toMatchObject({ title: 'sco_volume_ls vol-a/data', kind: 'read' })
+    expect(tool('sco_volume_quota')({ volume: 'vol-a' })).toMatchObject({ title: 'sco_volume_quota vol-a', kind: 'read' })
+  })
+
   it('submits without asking when mutation confirmation is off, and keeps a downstream denial', async () => {
     const { ctx, agent } = await boot(['confirmMutations: false'])
     let asked = 0
@@ -236,6 +261,7 @@ describe('SSP job tools through real Loader composition', () => {
     await entry!.fiber!.dispose()
     expect(ctx.tools.schemas().map(schema => schema.name).filter(name => name.startsWith('sco_'))).toEqual([
       'sco_job_list', 'sco_job_describe', 'sco_job_workers', 'sco_job_logs', 'sco_job_create', 'sco_job_stop',
+      'sco_volumes_list', 'sco_volume_ls', 'sco_volume_quota',
     ])
   })
 })

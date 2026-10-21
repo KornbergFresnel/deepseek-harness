@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-List, inspect, read logs of, submit, and stop SenseCore SSP training jobs, and read workspace queues, from the Host through the user's own `sco` CLI and credential profile. Each operation is one CLI invocation with literal arguments and a deadline; listing and inspection return the CLI's JSON unchanged.
+List, inspect, read logs of, submit, and stop SenseCore SSP training jobs, read workspace queues, and read AFS volumes, directories, and quota rules, from the Host through the user's own `sco` CLI and credential profile. Each operation is one CLI invocation with literal arguments and a deadline; listing and inspection return the CLI's JSON unchanged.
 
 ## Table of Contents
 
@@ -46,7 +46,7 @@ Install and initialize `sco` first (`sco init`, then `sco config set subscriptio
 | `graceMs` | `3000` | Subprocess termination grace |
 | `maxOutputBytes` | `1048576` | Captured bytes per output stream |
 
-`ctx.sco` exposes `listJobs(request?)`, `describeJob(name, request?)`, `listWorkers(name, request?)`, `readLogs(name, request?)`, `createJob(request)`, and `stopJobs(names, request?)`, each with an optional `AbortSignal`. Listing, description, and worker reads return the CLI's `--format=json` output as JSON. `readLogs` reads one non-following `stream-logs` round and keeps the tail when output exceeds `maxOutputBytes`, setting `truncated`; every other operation fails on oversized output. `createJob` maps its fields onto parameterized `sco ssp jobs create` flags; with `dryRun` it returns the merged `TrainingJob` without creating anything, otherwise the CLI output. `stopJobs` accepts 1 to 100 names. A non-zero exit fails with the CLI's stderr, or stdout when stderr is empty. A successful non-dry-run `createJob` emits `sco/job-created` with the job name and the resolved workspace, which [cluster-monitor](../cluster-monitor/README.md) uses to watch new jobs. `listQueues(request?)` runs `sco ssp workspaces list-queues` for the resolved workspace and fails when none resolves; `describeQueue(cluster, queue)` runs `sco ssp queues get`, whose object lists the machine types the queue accepts. `workspaceOf(request)` and `profile` expose the resolved workspace and configured profile, which [sco-submit](../sco-submit/README.md) uses to key cached options.
+`ctx.sco` exposes `listJobs(request?)`, `describeJob(name, request?)`, `listWorkers(name, request?)`, `readLogs(name, request?)`, `createJob(request)`, and `stopJobs(names, request?)`, each with an optional `AbortSignal`. Listing, description, and worker reads return the CLI's `--format=json` output as JSON. `readLogs` reads one non-following `stream-logs` round and keeps the tail when output exceeds `maxOutputBytes`, setting `truncated`; every other operation fails on oversized output. `createJob` maps its fields onto parameterized `sco ssp jobs create` flags; with `dryRun` it returns the merged `TrainingJob` without creating anything, otherwise the CLI output. `stopJobs` accepts 1 to 100 names. A non-zero exit fails with the CLI's stderr, or stdout when stderr is empty. A successful non-dry-run `createJob` emits `sco/job-created` with the job name and the resolved workspace, which [cluster-monitor](../cluster-monitor/README.md) uses to watch new jobs. `listQueues(request?)` runs `sco ssp workspaces list-queues` for the resolved workspace and fails when none resolves; `describeQueue(cluster, queue)` runs `sco ssp queues get`, whose object lists the machine types the queue accepts. `workspaceOf(request)` and `profile` expose the resolved workspace and configured profile, which [sco-submit](../sco-submit/README.md) uses to key cached options. `listVolumes()` runs `sco afs volumes list` for the volumes the active credentials can see and returns one record per table row, keyed by the column header lowercased without spaces (`id`, `totalcapacity`, `usedcapacity`, `state`, …); a row without an `id` cell, or output that is not a table, fails. `listVolumeDirectory(volume, directory?)` and `listDirectoryQuotas(volume, directory?)` run `sco afs volumes ls` and `sco afs dir-quota list` and return their text; `directory` must start with `/`.
 
 -----
 
@@ -60,9 +60,10 @@ Install and initialize `sco` first (`sco init`, then `sco config set subscriptio
 |---|---|
 | [`src/index.ts`](src/index.ts) | Resolve defaults, run one invocation under a deadline, parse JSON, classify failures |
 | [`src/argv.ts`](src/argv.ts) | Validate names and values and build `--flag=value` arguments |
+| [`src/table.ts`](src/table.ts) | Parse the bordered tables `sco afs` prints |
 | [`src/types.ts`](src/types.ts) | Request and result records |
 
-Every value travels as a single `--flag=value` token and job names must match the SSP name grammar, so no request value can be read as another option. The CLI runs through `ctx.subprocess` without a shell and without sandbox confinement, because it needs network access and the user's credential profile under the home directory. Creation and stop are not idempotent; a cancelled or timed-out call may still have been applied remotely. Service disposal aborts in-flight invocations.
+SSP values travel as single `--flag=value` tokens, job names must match the SSP name grammar, and `sco afs` volume ids and directories must start with a letter, digit, or `/`, so no request value can be read as another option. `sco afs` has no JSON output, so the table parser reads header lines between the first two borders and joins a row line whose `id` cell is empty onto the previous row, because the CLI wraps long cells at spaces. The CLI runs through `ctx.subprocess` without a shell and without sandbox confinement, because it needs network access and the user's credential profile under the home directory. Creation and stop are not idempotent; a cancelled or timed-out call may still have been applied remotely. Service disposal aborts in-flight invocations.
 
 </details>
 
@@ -91,6 +92,7 @@ This package contributes no prompt text. The tool package owns the appended tool
 
 - **Parameterized creation only** — complete `TrainingJob` files (`--config`), per-instance `--workload-file` overrides, and `copy` are not exposed, so heterogeneous instance groups and Ray cluster specs need the CLI directly.
 - **Unconfined CLI** — the Session sandbox does not apply to `sco`; the tool package's approval gate is the control for remote mutations.
+- **Volume reads only** — AFS volumes are listed and read, not created or changed; AOSS bucket usage and `sco cms metrics` capacity history are not exposed, and the `ls` and `dir-quota` text stays unparsed because the CLI documents neither layout.
 - **No log following** — logs are read one round at a time; `--follow` streaming and file output are not exposed.
 
 <a id="dev-note"></a>

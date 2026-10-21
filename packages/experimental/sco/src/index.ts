@@ -1,4 +1,4 @@
-/** SenseCore SSP training-job and queue operations through the locally installed `sco` CLI. */
+/** SenseCore SSP training-job and queue operations and AFS volume reads through the locally installed `sco` CLI. */
 
 import { homedir } from 'node:os'
 import { Context, Service } from '@deepseek-ai/cordis'
@@ -7,9 +7,10 @@ import type {} from '@deepseek-ai/dsh-subprocess'
 import type { SubprocessCollectedOutputs } from '@deepseek-ai/dsh-subprocess'
 import { deadline, MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
-import { createArgv, jobName, listArgv, logsArgv, resourceName } from './argv.ts'
+import { createArgv, jobName, listArgv, logsArgv, resourceName, volumeArgv } from './argv.ts'
+import { parseTable } from './table.ts'
 import type {
-  CreateScoJobRequest, ListScoJobsRequest, ReadScoJobLogsRequest, ScoJobCreated, ScoJobCreation, ScoJobLogs, ScoJobStop,
+  CreateScoJobRequest, ListScoJobsRequest, ScoAfsVolume, ReadScoJobLogsRequest, ScoJobCreated, ScoJobCreation, ScoJobLogs, ScoJobStop,
   ScoWorkspaceRequest,
 } from './types.ts'
 
@@ -50,8 +51,11 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
-/** `sco ssp` command groups the gateway invokes. */
-type ScoCommandGroup = 'jobs' | 'workspaces' | 'queues'
+/** `sco` command paths the gateway invokes. */
+type ScoCommand = readonly ['ssp', 'jobs' | 'workspaces' | 'queues'] | readonly ['afs', 'volumes' | 'dir-quota']
+
+const JOBS = ['ssp', 'jobs'] as const
+const VOLUMES = ['afs', 'volumes'] as const
 
 /** Captured result of one CLI invocation. */
 interface Invocation {
@@ -60,8 +64,8 @@ interface Invocation {
 }
 
 /**
- * Adapts `sco ssp jobs`, `workspaces list-queues`, and `queues get` subcommands to typed operations.
- * Every invocation is a literal argv with `--flag=value` tokens, run without a shell or
+ * Adapts `sco ssp jobs`, `workspaces list-queues`, `queues get`, `afs volumes`, and `afs dir-quota` subcommands to typed operations.
+ * Every invocation is a literal argv whose values cannot be read as options, run without a shell or
  * sandbox confinement because the CLI needs network access and its credential profile.
  */
 export class ScoGateway extends Service {
@@ -106,7 +110,7 @@ export class ScoGateway extends Service {
    * @returns the CLI's JSON listing.
    */
   async listJobs(request: ListScoJobsRequest = {}, signal?: AbortSignal): Promise<JsonValue> {
-    return this.json('jobs', [...listArgv(request), ...this.workspaceArgv(request), '--format=json'], signal)
+    return this.json(JOBS, [...listArgv(request), ...this.workspaceArgv(request), '--format=json'], signal)
   }
 
   /**
@@ -117,7 +121,7 @@ export class ScoGateway extends Service {
    * @returns the CLI's JSON job object.
    */
   async describeJob(name: string, request: ScoWorkspaceRequest = {}, signal?: AbortSignal): Promise<JsonValue> {
-    return this.json('jobs', ['describe', jobName(name), ...this.workspaceArgv(request), '--format=json'], signal)
+    return this.json(JOBS, ['describe', jobName(name), ...this.workspaceArgv(request), '--format=json'], signal)
   }
 
   /**
@@ -128,7 +132,7 @@ export class ScoGateway extends Service {
    * @returns the CLI's JSON worker listing.
    */
   async listWorkers(name: string, request: ScoWorkspaceRequest = {}, signal?: AbortSignal): Promise<JsonValue> {
-    return this.json('jobs', ['get-workers', jobName(name), ...this.workspaceArgv(request), '--format=json'], signal)
+    return this.json(JOBS, ['get-workers', jobName(name), ...this.workspaceArgv(request), '--format=json'], signal)
   }
 
   /**
@@ -139,7 +143,7 @@ export class ScoGateway extends Service {
    * @returns the retained log text and whether it was truncated to the output limit.
    */
   async readLogs(name: string, request: ReadScoJobLogsRequest = {}, signal?: AbortSignal): Promise<ScoJobLogs> {
-    const result = await this.run('jobs', [...logsArgv(name, request), ...this.workspaceArgv(request)], signal, true)
+    const result = await this.run(JOBS, [...logsArgv(name, request), ...this.workspaceArgv(request)], signal, true)
     return { text: result.stdout, truncated: result.lossy }
   }
 
@@ -153,8 +157,8 @@ export class ScoGateway extends Service {
    */
   async createJob(request: CreateScoJobRequest, signal?: AbortSignal): Promise<ScoJobCreation> {
     const argv = [...createArgv(request, request.queueId ?? this.config.queueId), ...this.workspaceArgv(request)]
-    if (request.dryRun === true) return { kind: 'dry-run', job: await this.json('jobs', argv, signal) }
-    const result = await this.run('jobs', argv, signal)
+    if (request.dryRun === true) return { kind: 'dry-run', job: await this.json(JOBS, argv, signal) }
+    const result = await this.run(JOBS, argv, signal)
     const workspace = this.workspaceOf(request)
     this.ctx.emit('sco/job-created', { name: request.name, ...workspace === undefined ? {} : { workspace } })
     return { kind: 'created', name: request.name, output: result.stdout.trim() }
@@ -169,7 +173,7 @@ export class ScoGateway extends Service {
    */
   async stopJobs(names: readonly string[], request: ScoWorkspaceRequest = {}, signal?: AbortSignal): Promise<ScoJobStop> {
     if (names.length === 0 || names.length > 100) throw new Error('sco: stop takes 1 to 100 job names')
-    const result = await this.run('jobs', ['stop', ...names.map(jobName), ...this.workspaceArgv(request)], signal)
+    const result = await this.run(JOBS, ['stop', ...names.map(jobName), ...this.workspaceArgv(request)], signal)
     return { names: [...names], output: result.stdout.trim() }
   }
 
@@ -182,7 +186,7 @@ export class ScoGateway extends Service {
   async listQueues(request: ScoWorkspaceRequest = {}, signal?: AbortSignal): Promise<JsonValue> {
     const workspace = this.workspaceOf(request)
     if (workspace === undefined) throw new Error('sco: listing queues needs a workspace from the request or the gateway config')
-    return this.json('workspaces', ['list-queues', resourceName('workspace', workspace), '--format=json'], signal)
+    return this.json(['ssp', 'workspaces'], ['list-queues', resourceName('workspace', workspace), '--format=json'], signal)
   }
 
   /**
@@ -193,7 +197,41 @@ export class ScoGateway extends Service {
    * @returns the CLI's JSON queue object.
    */
   async describeQueue(cluster: string, queue: string, signal?: AbortSignal): Promise<JsonValue> {
-    return this.json('queues', ['get', resourceName('cluster', cluster), resourceName('queue', queue), '--format=json'], signal)
+    return this.json(['ssp', 'queues'], ['get', resourceName('cluster', cluster), resourceName('queue', queue), '--format=json'], signal)
+  }
+
+  /**
+   * List the AFS volumes the active sco credentials can see, with capacity and state.
+   * @param signal - cancellation.
+   * @returns one record per table row, keyed by lowercase alphanumeric column header; empty cells are omitted.
+   */
+  async listVolumes(signal?: AbortSignal): Promise<ScoAfsVolume[]> {
+    const { stdout } = await this.run(VOLUMES, ['list'], signal)
+    return parseTable(stdout, 'id') as ScoAfsVolume[]
+  }
+
+  /**
+   * List the entries of one directory in an AFS volume.
+   * @param volume - volume id from `listVolumes`.
+   * @param directory - absolute directory inside the volume; omitted lists the volume root.
+   * @param signal - cancellation.
+   * @returns the CLI's listing text, whose layout the CLI does not document.
+   */
+  async listVolumeDirectory(volume: string, directory?: string, signal?: AbortSignal): Promise<string> {
+    const { stdout } = await this.run(VOLUMES, ['ls', ...volumeArgv(volume, directory)], signal)
+    return stdout.trim()
+  }
+
+  /**
+   * List the directory quota rules of an AFS volume.
+   * @param volume - volume id from `listVolumes`.
+   * @param directory - absolute directory inside the volume; omitted lists every rule.
+   * @param signal - cancellation.
+   * @returns the CLI's rule text, whose layout the CLI does not document.
+   */
+  async listDirectoryQuotas(volume: string, directory?: string, signal?: AbortSignal): Promise<string> {
+    const { stdout } = await this.run(['afs', 'dir-quota'], ['list', ...volumeArgv(volume, directory)], signal)
+    return stdout.trim()
   }
 
   /**
@@ -217,18 +255,18 @@ export class ScoGateway extends Service {
     return workspace === undefined ? [] : [`--workspace-name=${workspace}`]
   }
 
-  private async json(group: ScoCommandGroup, argv: readonly string[], signal: AbortSignal | undefined): Promise<JsonValue> {
-    const { stdout } = await this.run(group, argv, signal)
+  private async json(command: ScoCommand, argv: readonly string[], signal: AbortSignal | undefined): Promise<JsonValue> {
+    const { stdout } = await this.run(command, argv, signal)
     try {
       return JSON.parse(stdout) as JsonValue
     } catch (error) {
-      throw new Error(`sco ssp ${group} ${argv[0]} returned non-JSON output: ${stdout.slice(0, 200)}`, { cause: error })
+      throw new Error(`sco ${command.join(' ')} ${argv[0]} returned non-JSON output: ${stdout.slice(0, 200)}`, { cause: error })
     }
   }
 
-  /** Run `sco [--profile=<p>] ssp <group> <argv>` and return stdout; a non-zero exit throws with stderr. */
+  /** Run `sco [--profile=<p>] <command> <argv>` and return stdout; a non-zero exit throws with stderr. */
   private async run(
-    group: ScoCommandGroup, argv: readonly string[], signal: AbortSignal | undefined, allowLossy = false,
+    command: ScoCommand, argv: readonly string[], signal: AbortSignal | undefined, allowLossy = false,
   ): Promise<Invocation> {
     const operation = signal === undefined ? this.lifetime.signal : AbortSignal.any([this.lifetime.signal, signal])
     using timeout = deadline(operation, this.config.timeoutMs, 'SCO_TIMEOUT')
@@ -236,7 +274,7 @@ export class ScoGateway extends Service {
     const program = await this.ctx.subprocess.resolveExecutable(this.config.command, undefined, timeout.signal)
     const profile = this.config.profile === undefined ? [] : [`--profile=${this.config.profile}`]
     const child = this.ctx.subprocess.spawn({
-      argv: [program, ...profile, 'ssp', group, ...argv],
+      argv: [program, ...profile, ...command, ...argv],
       cwd: this.cwd,
       env: { SCO_COLOR: 'no' },
       signal: timeout.signal,
@@ -255,9 +293,9 @@ export class ScoGateway extends Service {
       const stdout = captured.stdout.readFrom(0)
       if (outcome.exitCode !== 0) {
         const stderr = captured.stderr.readFrom(0).text.trim()
-        throw new Error(`sco ssp ${group} ${argv[0]} failed (${outcome.signal ?? outcome.exitCode}): ${stderr || stdout.text.trim()}`)
+        throw new Error(`sco ${command.join(' ')} ${argv[0]} failed (${outcome.signal ?? outcome.exitCode}): ${stderr || stdout.text.trim()}`)
       }
-      if (stdout.lossy && !allowLossy) throw new Error(`sco ssp ${group} ${argv[0]} output exceeds maxOutputBytes`)
+      if (stdout.lossy && !allowLossy) throw new Error(`sco ${command.join(' ')} ${argv[0]} output exceeds maxOutputBytes`)
       return { stdout: stdout.text, lossy: stdout.lossy }
     } finally {
       child.terminate()

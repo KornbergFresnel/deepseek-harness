@@ -1,4 +1,4 @@
-/** Validated `sco ssp jobs` argv construction; values never become separate tokens that the CLI could read as flags. */
+/** Validated `sco ssp jobs` and `sco afs` argv construction; no value becomes a token that the CLI could read as a flag. */
 
 import type { CreateScoJobRequest, ListScoJobsRequest, ReadScoJobLogsRequest } from './types.ts'
 
@@ -32,6 +32,19 @@ export function jobName(name: string): string {
 export function resourceName(key: string, value: string): string {
   if (!RESOURCE_NAME.test(value)) throw new Error(`sco: ${key} "${value}" must start with a letter or digit and use only letters, digits, ".", "_", and "-"`)
   return value
+}
+
+/**
+ * Build the `-i <volume> [-d <directory>]` tokens shared by `sco afs` reads.
+ * @param volume - volume id; validated so it cannot be read as an option.
+ * @param directory - absolute directory inside the volume, starting with `/`.
+ * @returns the argv tokens.
+ */
+export function volumeArgv(volume: string, directory?: string): string[] {
+  resourceName('volume', volume)
+  if (directory === undefined) return ['-i', volume]
+  if (!directory.startsWith('/')) throw new Error(`sco: directory "${directory}" must be an absolute path inside the volume`)
+  return ['-i', volume, '-d', directory]
 }
 
 function positiveInteger(key: string, value: number, min = 1, max = Number.MAX_SAFE_INTEGER): number {

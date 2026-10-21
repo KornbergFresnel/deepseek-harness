@@ -2104,8 +2104,8 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
   },
   {
     key: 'sco',
-    summary: 'Adapts `sco ssp jobs`, `workspaces list-queues`, and `queues get` subcommands to typed operations.',
-    description: 'Adapts `sco ssp jobs`, `workspaces list-queues`, and `queues get` subcommands to typed operations. Every invocation is a literal argv with `--flag=value` tokens, run without a shell or sandbox confinement because the CLI needs network access and its credential profile.',
+    summary: 'Adapts `sco ssp jobs`, `workspaces list-queues`, `queues get`, `afs volumes`, and `afs dir-quota` subcommands to typed operations.',
+    description: 'Adapts `sco ssp jobs`, `workspaces list-queues`, `queues get`, `afs volumes`, and `afs dir-quota` subcommands to typed operations. Every invocation is a literal argv whose values cannot be read as options, run without a shell or sandbox confinement because the CLI needs network access and its credential profile.',
     methods: [
       {
         signature: 'async listJobs(request: ListScoJobsRequest = {}, signal?: AbortSignal): Promise<JsonValue>',
@@ -2154,6 +2154,24 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Read one queue, including the machine types (`spec_code`) its workloads accept.',
         parameters: [{ name: 'cluster', description: 'cluster name from the queue\'s resource id.' }, { name: 'queue', description: 'queue name from the queue\'s resource id.' }, { name: 'signal', description: 'cancellation.' }],
         returns: 'the CLI\'s JSON queue object.',
+      },
+      {
+        signature: 'async listVolumes(signal?: AbortSignal): Promise<ScoAfsVolume[]>',
+        description: 'List the AFS volumes the active sco credentials can see, with capacity and state.',
+        parameters: [{ name: 'signal', description: 'cancellation.' }],
+        returns: 'one record per table row, keyed by lowercase alphanumeric column header; empty cells are omitted.',
+      },
+      {
+        signature: 'async listVolumeDirectory(volume: string, directory?: string, signal?: AbortSignal): Promise<string>',
+        description: 'List the entries of one directory in an AFS volume.',
+        parameters: [{ name: 'volume', description: 'volume id from `listVolumes`.' }, { name: 'directory', description: 'absolute directory inside the volume; omitted lists the volume root.' }, { name: 'signal', description: 'cancellation.' }],
+        returns: 'the CLI\'s listing text, whose layout the CLI does not document.',
+      },
+      {
+        signature: 'async listDirectoryQuotas(volume: string, directory?: string, signal?: AbortSignal): Promise<string>',
+        description: 'List the directory quota rules of an AFS volume.',
+        parameters: [{ name: 'volume', description: 'volume id from `listVolumes`.' }, { name: 'directory', description: 'absolute directory inside the volume; omitted lists every rule.' }, { name: 'signal', description: 'cancellation.' }],
+        returns: 'the CLI\'s rule text, whose layout the CLI does not document.',
       },
       {
         signature: 'workspaceOf(request: ScoWorkspaceRequest): string | undefined',
@@ -7166,6 +7184,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ScheduleUpdateResult',
     declaration: 'export type ScheduleUpdateResult = {\n    readonly id: ScheduleId;\n    readonly updated: boolean;\n    readonly record: ScheduleRecord;\n} | ScheduleUpdateMiss | ScheduleToolError;',
+  },
+  {
+    name: 'ScoAfsVolume',
+    declaration: 'export type ScoAfsVolume = Record<string, string> & {\n    id: string;\n};',
   },
   {
     name: 'ScoCodeSource',

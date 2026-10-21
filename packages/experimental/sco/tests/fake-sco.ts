@@ -2,12 +2,35 @@ import { chmod, mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-/** Node script standing in for the sco CLI: records argv and answers by command group, subcommand, and job name. */
+/** Node script standing in for the sco CLI: records argv and answers by command group, subcommand, job name, and volume. */
 const SCRIPT = String.raw`#!/usr/bin/env node
 const { appendFileSync } = require('node:fs')
 const { join } = require('node:path')
 const argv = process.argv.slice(2)
 appendFileSync(join(__dirname, 'calls.jsonl'), JSON.stringify(argv) + '\n')
+if (argv.includes('afs')) {
+  const [resource, verb] = argv.slice(argv.indexOf('afs') + 1)
+  const volume = argv[argv.indexOf('-i') + 1]
+  if (volume === 'vol-fail') { process.stderr.write('volume not found\n'); process.exit(7) }
+  if (verb === 'list' && resource === 'volumes') {
+    process.stdout.write([
+      '+------+--------------------------------------+---------+---------+------------+--------+',
+      '| NAME |                  ID                  |  TOTAL  |  USED   | CREATETIME | STATE  |',
+      '|      |                                      | CAPACITY| CAPACITY|            |        |',
+      '+------+--------------------------------------+---------+---------+------------+--------+',
+      '|      | 019fc675-8a27-7a12-abad-47a872e18d81 | 51200GB | 43TB    | 2026-08-03 | ACTIVE |',
+      '|      |                                      |         |         | +0000 UTC  |        |',
+      '| team | 019fad51-5ed2-7e37-84d1-d6f19f904219 | 500GB   | 16GB    | 2026-07-29 | ACTIVE |',
+      '| new  | 019f8d42-d97f-7cce-82cf-b6413fd0d314 |         | 1GB     | 2026-07-23 | ACTIVE |',
+      '| zero | 019f8dc9-4464-757d-ab49-2744c08e2ff4 | 0GB     | 0GB     | 2026-07-23 | ACTIVE |',
+      '+------+--------------------------------------+---------+---------+------------+--------+',
+      '',
+    ].join('\n'))
+    return
+  }
+  process.stdout.write(resource + ' ' + verb + ' ' + argv.slice(argv.indexOf('-i')).join(' ') + '\n')
+  return
+}
 const group = argv[argv.indexOf('ssp') + 1]
 const rest = argv.slice(argv.indexOf('ssp') + 2)
 const [command, target] = rest

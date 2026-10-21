@@ -878,6 +878,7 @@ export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
   ScoWorkspaceRequest: 'SSP job records are owned by packages/experimental/sco/src/types.ts',
   ReadScoJobLogsRequest: 'SSP job records are owned by packages/experimental/sco/src/types.ts',
   ScoJobLogs: 'SSP job records are owned by packages/experimental/sco/src/types.ts',
+  ScoAfsVolume: 'SSP job records are owned by packages/experimental/sco/src/types.ts',
   CreateScoJobRequest: 'SSP job records are owned by packages/experimental/sco/src/types.ts',
   ScoJobCreation: 'SSP job records are owned by packages/experimental/sco/src/types.ts',
   ScoJobStop: 'SSP job records are owned by packages/experimental/sco/src/types.ts',
