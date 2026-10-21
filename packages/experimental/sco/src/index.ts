@@ -9,7 +9,8 @@ import { deadline, MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { createArgv, jobName, listArgv, logsArgv } from './argv.ts'
 import type {
-  CreateScoJobRequest, ListScoJobsRequest, ReadScoJobLogsRequest, ScoJobCreation, ScoJobLogs, ScoJobStop, ScoWorkspaceRequest,
+  CreateScoJobRequest, ListScoJobsRequest, ReadScoJobLogsRequest, ScoJobCreated, ScoJobCreation, ScoJobLogs, ScoJobStop,
+  ScoWorkspaceRequest,
 } from './types.ts'
 
 export type * from './types.ts'
@@ -37,6 +38,15 @@ type ResolvedConfig = Required<Pick<Config, 'command' | 'timeoutMs' | 'graceMs' 
 declare module '@deepseek-ai/cordis' {
   interface Context {
     sco: ScoGateway
+  }
+
+  interface Events {
+    /**
+     * The CLI accepted a non-dry-run job creation; observers such as job monitors start tracking it.
+     * @mode emit
+     * @param event - created job name and the workspace named on the command line.
+     */
+    'sco/job-created'(event: ScoJobCreated): void
   }
 }
 
@@ -136,11 +146,14 @@ export class ScoGateway extends Service {
    * @param request - job specification.
    * @param signal - cancellation; a cancelled creation may still have been accepted remotely.
    * @returns the merged `TrainingJob` for a dry run, otherwise the created name and CLI output.
+   * A real creation emits `sco/job-created` after the CLI succeeds.
    */
   async createJob(request: CreateScoJobRequest, signal?: AbortSignal): Promise<ScoJobCreation> {
     const argv = [...createArgv(request, request.queueId ?? this.config.queueId), ...this.workspaceArgv(request)]
     if (request.dryRun === true) return { kind: 'dry-run', job: await this.json(argv, signal) }
     const result = await this.run(argv, signal)
+    const workspace = request.workspace ?? this.config.workspace
+    this.ctx.emit('sco/job-created', { name: request.name, ...workspace === undefined ? {} : { workspace } })
     return { kind: 'created', name: request.name, output: result.stdout.trim() }
   }
 

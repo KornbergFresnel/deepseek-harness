@@ -114,3 +114,11 @@ export interface ScoJobStop {
   /** CLI confirmation text. */
   output: string
 }
+
+/** A job the CLI accepted for creation. */
+export interface ScoJobCreated {
+  /** Created job name. */
+  name: string
+  /** Workspace named on the command line; absent when the sco profile supplied it. */
+  workspace?: string
+}

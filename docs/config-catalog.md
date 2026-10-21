@@ -1004,6 +1004,35 @@ export interface CotTranslationPreferences {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-client-ui-cot-translation -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-cluster-monitor -->
+<a id="deepseek-aidsh-experimental-cluster-monitor"></a>
+
+## `@deepseek-ai/dsh-experimental-cluster-monitor`
+
+- `inject`: `sco` · `storageDomain`
+- `source`: [`packages/experimental/cluster-monitor/src/index.ts:28`](../packages/experimental/cluster-monitor/src/index.ts)
+
+```ts config-catalog
+/** Polling cadence, retention, and automatic watching. */
+export interface Config {
+  /** Poll interval in milliseconds for a running job: describe, then one log round. */
+  runningPollMs: number
+  /** Poll interval in milliseconds for a pending or unrecognized job: describe only. */
+  pendingPollMs: number
+  /** Concurrent `sco` invocations across all watched jobs. */
+  maxConcurrentCalls: number
+  /** Retained log tail per job, in UTF-16 code units. */
+  logTailLength: number
+  /** Retained points per training metric; older points are thinned to half when exceeded. */
+  maxPointsPerSeries: number
+  /** Retained pretty-printed job object, in UTF-16 code units. */
+  describeLength: number
+  /** Watch every job that `ctx.sco` creates. */
+  watchCreatedJobs: boolean
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-cluster-monitor -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-computer-use-cua-driver-mcp -->
 <a id="deepseek-aidsh-experimental-computer-use-cua-driver-mcp"></a>
 
@@ -4708,6 +4737,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 | `@deepseek-ai/dsh-experimental-auto-review` | `approval` · `llm` · `permissionPresets` · `sessions` · `tools` · `workingDirectory` | [`packages/experimental/auto-review/src/index.ts`](../packages/experimental/auto-review/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-client-ui-agent-team` | — | [`packages/experimental/client-ui-agent-team/src/index.ts`](../packages/experimental/client-ui-agent-team/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-client-ui-claude-code-mods` | — | [`packages/experimental/client-ui-claude-code-mods/src/index.ts`](../packages/experimental/client-ui-claude-code-mods/src/index.ts) |
+| `@deepseek-ai/dsh-experimental-client-ui-cluster-monitor` | — | [`packages/experimental/client-ui-cluster-monitor/src/index.ts`](../packages/experimental/client-ui-cluster-monitor/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-client-ui-voice-input` | — | [`packages/experimental/client-ui-voice-input/src/index.ts`](../packages/experimental/client-ui-voice-input/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-computer-use-cua-driver-native` | `computerUse` · `tools` · `systemPrompt` | [`packages/experimental/computer-use-cua-driver-native/src/index.ts`](../packages/experimental/computer-use-cua-driver-native/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-session-inspector` | — | [`packages/experimental/session-inspector/src/index.ts`](../packages/experimental/session-inspector/src/index.ts) |

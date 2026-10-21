@@ -35,6 +35,8 @@ flowchart LR
   pkg_experimental_sco["experimental-sco"]
   svc_sco["ctx.sco<br/>SenseCore SSP training jobs"]
   pkg_experimental_tool_sco["experimental-tool-sco"]
+  pkg_experimental_cluster_monitor["experimental-cluster-monitor"]
+  svc_clusterMonitor["ctx.clusterMonitor<br/>Watched SSP job polling"]
   pkg_working_directory["working-directory"]
   svc_workingDirectory["ctx.workingDirectory<br/>Session working directory"]
   pkg_tool_working_directory["tool-working-directory"]
@@ -348,6 +350,7 @@ flowchart LR
   pkg_experimental_browser_use_stagehand_native --> svc_browserUse
   pkg_experimental_claude_code_mods --> svc_claudeCodeMods
   pkg_experimental_client_ui_cot_translation --> svc_cotTranslation
+  pkg_experimental_cluster_monitor --> svc_clusterMonitor
   pkg_experimental_computer_use_cua_driver_mcp --> svc_computerUse
   pkg_experimental_computer_use_cua_driver_native --> svc_computerUse
   pkg_experimental_ptc_runtime_python --> svc_ptcRuntime
@@ -525,6 +528,7 @@ flowchart LR
   svc_sandboxPolicy --> pkg_bash_sandbox
   svc_sandboxPolicy --> pkg_fs_sandbox
   svc_sandboxPolicy --> pkg_terminal_bash
+  svc_sco --> pkg_experimental_cluster_monitor
   svc_sco --> pkg_experimental_tool_sco
   svc_sessionPersistence --> pkg_agent_loop
   svc_sessionPersistence --> pkg_hooks_claude_code
@@ -627,7 +631,8 @@ flowchart LR
 | `ctx.profileContext` | `core` | [`app-boot`](../packages/boot/app-boot) | - | [`plugin-manager`](../packages/boot/plugin-manager) | - | dsh launcher 提供纯数据形式的 profile 位置与组合输入；重载调度由 dsh-hmr 负责。 |
 | `ctx.connection` | `core` | [`client-connection`](../packages/client/connection) | - | [`api-gateway`](../packages/api/gateway), [`host-frontend-static`](../packages/host/frontend-static) | - | 负责浏览器认证与共享 HTTP 请求分发；API 适配器注册端点和流。 |
 | `ctx.worktrees` | `seam` | [`experimental-worktree`](../packages/experimental/worktree) | [`experimental-worktree`](../packages/experimental/worktree) | [`experimental-tool-worktree`](../packages/experimental/tool-worktree) | - | 显式实验组合从固定的本地提交创建工作树。检出目录与共享 Git 元数据受现有写权限约束；工作目录服务拥有创建后的 Session 目录。 |
-| `ctx.sco` | `seam` | [`experimental-sco`](../packages/experimental/sco) | [`experimental-sco`](../packages/experimental/sco) | [`experimental-tool-sco`](../packages/experimental/tool-sco) | - | 显式实验网关，调用本地 sco CLI。因 CLI 需要网络访问和凭据 profile 而不受沙箱约束；工具包在提交和停止前询问用户。 |
+| `ctx.sco` | `seam` | [`experimental-sco`](../packages/experimental/sco) | [`experimental-sco`](../packages/experimental/sco) | [`experimental-tool-sco`](../packages/experimental/tool-sco), [`experimental-cluster-monitor`](../packages/experimental/cluster-monitor) | - | 显式实验网关，调用本地 sco CLI。因 CLI 需要网络访问和凭据 profile 而不受沙箱约束；工具包在提交和停止前询问用户。 |
+| `ctx.clusterMonitor` | `core` | [`experimental-cluster-monitor`](../packages/experimental/cluster-monitor) | - | - | - | 在 Host 计时器上通过 SSP 网关轮询关注的任务，并向 Web 页面提供状态、从日志解析的指标和日志尾部；不进入任何模型请求。 |
 | `ctx.workingDirectory` | `seam` | [`working-directory`](../packages/session/working-directory) | [`working-directory`](../packages/session/working-directory) | [`tool-working-directory`](../packages/session/tool-working-directory), [`tool-fs`](../packages/fs/tool-fs), [`tool-bash`](../packages/shell/tool-bash), [`tool-pwsh`](../packages/shell/tool-pwsh), [`subagent`](../packages/subagent/subagent), [`sdk-jsonrpc-server`](../packages/sdk/server) | - | 一个 Session 投影拥有有效执行目录。文件系统验证变更，用户上下文报告目录信息，原始元数据与写入授权保持不变。 |
 | `ctx.mcpResources` | `seam` | [`mcp-resources`](../packages/mcp/mcp-resources) | [`mcp-client`](../packages/mcp/mcp-client) | [`mcp-resources`](../packages/mcp/mcp-resources) | - | 连接所有者提供的操作在调用 agent 的作用域内服务于共享资源工具。 |
 | `ctx.browserUse` | `seam` | [`browser-use`](../packages/browser-use/browser-use) | [`experimental-browser-use-playwright-mcp`](../packages/experimental/browser-use-playwright-mcp), [`experimental-browser-use-chrome-devtools-mcp`](../packages/experimental/browser-use-chrome-devtools-mcp), [`experimental-browser-use-stagehand-native`](../packages/experimental/browser-use-stagehand-native) | [`experimental-browser-use-playwright-mcp`](../packages/experimental/browser-use-playwright-mcp), [`experimental-browser-use-chrome-devtools-mcp`](../packages/experimental/browser-use-chrome-devtools-mcp), [`experimental-browser-use-stagehand-native`](../packages/experimental/browser-use-stagehand-native) | - | 每个服务实例注册一个提供方拥有的名称。提供方按实时 Session 拥有自己的工具与浏览器资源；共享服务不提供浏览器操作 API。 |

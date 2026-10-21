@@ -1,0 +1,266 @@
+.page {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-base);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.listPane {
+  display: flex;
+  flex: 0 0 340px;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  padding: 0 16px 24px;
+  overflow: auto;
+  border-right: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.pageHeading {
+  padding-top: 28px;
+}
+
+:global([data-platform='darwin']) .pageHeading {
+  padding-top: calc(28px + var(--dsh-frame-top-clearance, 0px));
+}
+
+.pageHeading h1 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 500;
+}
+
+.watchForm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.muted {
+  margin: 0;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.notice {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 10px;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.row:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.row[aria-current='true'] {
+  background: var(--dsw-alias-interactive-bg-active);
+}
+
+.rowTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.rowName {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowMeta {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+}
+
+.detailPane {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.detailEmpty {
+  padding: 48px 24px;
+  color: var(--dsw-alias-label-tertiary);
+  text-align: center;
+}
+
+.detail {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 28px clamp(16px, 3vw, 40px) 48px;
+}
+
+:global([data-platform='darwin']) .detail {
+  padding-top: calc(28px + var(--dsh-frame-top-clearance, 0px));
+}
+
+.detail h3 {
+  margin: 24px 0 8px;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.detailHeading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.detailHeading h2 {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px 16px;
+  margin: 16px 0 0;
+}
+
+.fact dt {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+}
+
+.fact dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.chart {
+  margin: 0;
+  padding: 10px 12px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 12px;
+}
+
+.chartCaption {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.chartName {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chartLatest {
+  flex: none;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.chartPlot {
+  display: block;
+  width: 100%;
+  height: 72px;
+  margin: 6px 0 4px;
+  overflow: visible;
+}
+
+.chartLine {
+  fill: none;
+  stroke: var(--dsw-alias-brand-primary);
+  stroke-width: 1.5px;
+  stroke-linejoin: round;
+}
+
+.chartAxis {
+  display: flex;
+  justify-content: space-between;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+}
+
+.logs {
+  max-height: 360px;
+  margin: 0;
+  padding: 10px 12px;
+  overflow: auto;
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-1);
+  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.describe {
+  margin-top: 24px;
+}
+
+.describe summary {
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+
+@media (max-width: 760px) {
+  .page {
+    flex-direction: column;
+    overflow: auto;
+  }
+
+  .listPane {
+    flex: none;
+    border-right: 0;
+    border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+  }
+
+  .detailPane {
+    overflow: visible;
+  }
+}

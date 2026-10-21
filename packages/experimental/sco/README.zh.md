@@ -46,7 +46,7 @@ kind: "package-reference"
 | `graceMs` | `3000` | 子进程终止宽限期 |
 | `maxOutputBytes` | `1048576` | 每个输出流捕获的字节数 |
 
-`ctx.sco` 提供 `listJobs(request?)`、`describeJob(name, request?)`、`listWorkers(name, request?)`、`readLogs(name, request?)`、`createJob(request)` 和 `stopJobs(names, request?)`，均可传入可选的 `AbortSignal`。列表、详情和 Worker 查询返回 CLI `--format=json` 输出的 JSON。`readLogs` 读取一轮不跟随的 `stream-logs`，输出超过 `maxOutputBytes` 时保留尾部并设置 `truncated`；其他操作在输出超限时失败。`createJob` 把字段映射为参数化 `sco ssp jobs create` 的标志；设置 `dryRun` 时返回合并后的 `TrainingJob` 而不创建任务，否则返回 CLI 输出。`stopJobs` 接受 1 到 100 个任务名。非零退出码会以 CLI 的 stderr 报错，stderr 为空时使用 stdout。
+`ctx.sco` 提供 `listJobs(request?)`、`describeJob(name, request?)`、`listWorkers(name, request?)`、`readLogs(name, request?)`、`createJob(request)` 和 `stopJobs(names, request?)`，均可传入可选的 `AbortSignal`。列表、详情和 Worker 查询返回 CLI `--format=json` 输出的 JSON。`readLogs` 读取一轮不跟随的 `stream-logs`，输出超过 `maxOutputBytes` 时保留尾部并设置 `truncated`；其他操作在输出超限时失败。`createJob` 把字段映射为参数化 `sco ssp jobs create` 的标志；设置 `dryRun` 时返回合并后的 `TrainingJob` 而不创建任务，否则返回 CLI 输出。`stopJobs` 接受 1 到 100 个任务名。非零退出码会以 CLI 的 stderr 报错，stderr 为空时使用 stdout。非 dry-run 的 `createJob` 成功后会发出带任务名和解析后工作空间的 `sco/job-created` 事件，[cluster-monitor](../cluster-monitor/README.zh.md) 用它自动关注新任务。
 
 -----
 

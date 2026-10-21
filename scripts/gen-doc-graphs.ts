@@ -185,8 +185,15 @@ const SERVICE_ROLES: ServiceRole[] = [
     title: 'SenseCore SSP training jobs',
     mode: 'seam',
     implementations: ['experimental-sco'],
-    consumers: ['experimental-tool-sco'],
+    consumers: ['experimental-tool-sco', 'experimental-cluster-monitor'],
     note: 'Explicit experimental gateway to the local sco CLI. Runs unconfined because the CLI needs network access and its credential profile; the tool package asks before submission and stop.',
+  },
+  {
+    key: 'clusterMonitor',
+    pkg: 'experimental-cluster-monitor',
+    title: 'Watched SSP job polling',
+    mode: 'core',
+    note: 'Polls watched jobs through the SSP gateway on Host timers and serves state, log-derived metrics, and log tails to the Web page; nothing reaches a model request.',
   },
   {
     key: 'workingDirectory',
