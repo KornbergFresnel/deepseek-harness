@@ -152,7 +152,7 @@ export type ScoQueueOption = {
   id: string
   cluster: string
   queue: string
-  /** The CLI's queue object, including the machine types its workloads accept. */
+  /** The queue's object from `workspaces list-queues`, including the machine types allocated to it. */
   detail: JsonValue
 }
 
@@ -184,7 +184,7 @@ export type ScoJobSubmitted = {
 
 /** One queue of the cached resource options with the machine types found in its CLI object. */
 export type ScoQueueChoice = ScoQueueOption & {
-  /** Distinct string `spec_code` values anywhere in the queue object, in first-seen order. */
+  /** Distinct string `machine_type` and `spec_code` values anywhere in the queue object, in first-seen order. */
   machineTypes: string[]
 }
 

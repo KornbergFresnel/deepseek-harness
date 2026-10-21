@@ -12,7 +12,7 @@ import type { Domain } from '@deepseek-ai/dsh-storage-domain'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { machineTypes, mentions, mountPath, queueIds, RESOURCE_FAILURE, resolveSubmission, sourceName, validSource } from './resolve.ts'
 import type {
-  ScoConfigOverview, ScoJobSubmitted, ScoJobTemplate, ScoQueueOption, ScoResolvedSubmission, ScoResourceOptions, ScoResourceOptionsRequest,
+  ScoConfigOverview, ScoJobSubmitted, ScoJobTemplate, ScoResolvedSubmission, ScoResourceOptions, ScoResourceOptionsRequest,
   ScoSource, ScoSourceSaveRequest, ScoSubmission, SubmitScoJobRequest,
 } from './types.ts'
 
@@ -225,11 +225,7 @@ export class ScoSubmit extends TypertRemoteService {
       const excerpt = JSON.stringify(listing).slice(0, 600)
       throw new Error(`sco-submit: no queue resource ids (/subscriptions/…/clusters/<cluster>/queues/<queue>) in sco ssp workspaces list-queues ${workspace} output: ${excerpt}`)
     }
-    const queues: ScoQueueOption[] = []
-    for (const { id, cluster, queue } of found) {
-      queues.push({ id, cluster, queue, detail: await this.ctx.sco.describeQueue(cluster, queue, signal) })
-    }
-    const options: ScoResourceOptions = { workspace, fetchedAt: new Date().toISOString(), queues }
+    const options: ScoResourceOptions = { workspace, fetchedAt: new Date().toISOString(), queues: found }
     await table.put(key, options)
     this.changed()
     return options

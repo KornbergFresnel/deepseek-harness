@@ -352,7 +352,7 @@ function registerSubmissionTools(ctx: Context): void {
 
   ctx.tools.register(defineTool({
     name: 'sco_resource_options',
-    description: 'Read the queues a workspace can submit to and each queue\'s CLI object, which lists the machine types (spec_code) its workloads accept. Results are cached locally; set refresh only after a submission failed on machine type, queue, or quota, or when the user asks. Offer machine types and queues to the user as choices instead of asking them to type one.',
+    description: 'Read the queues a workspace can submit to and each queue\'s CLI object, whose properties.machine_type_allocation lists the machine types allocated to it with their quota. Results are cached locally; set refresh only after a submission failed on machine type, queue, or quota, or when the user asks. Offer machine types and queues to the user as choices instead of asking them to type one.',
     parameters: { workspace: WORKSPACE, refresh: { type: 'boolean', description: 'Query the cluster even when options are cached.' } },
     output: { schema: { type: 'json' }, render: (_args, value) => json(value) },
     async execute(args, exec) {

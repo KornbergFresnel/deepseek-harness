@@ -1,7 +1,7 @@
 /** Source validation and submission expansion into `createJob` flags. */
 
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
-import type { ScoJobTemplate, ScoResolvedSubmission, ScoSource, ScoVolume, SubmitScoJobRequest } from './types.ts'
+import type { ScoJobTemplate, ScoQueueOption, ScoResolvedSubmission, ScoSource, ScoVolume, SubmitScoJobRequest } from './types.ts'
 
 /** Source and template names. */
 const NAME = /^[a-z0-9][a-z0-9-]{0,62}$/
@@ -179,21 +179,23 @@ export function resolveSubmission(request: SubmitScoJobRequest, context: Resolve
 /**
  * Collect queue resource ids from an untyped CLI listing.
  * @param listing - `workspaces list-queues` JSON.
- * @returns distinct ids with the cluster and queue names they contain.
+ * @returns distinct ids with the cluster and queue names they contain; `detail` is the object holding the id as its `id`
+ *   field, or `{ id }` when the id appears only elsewhere.
  */
-export function queueIds(listing: JsonValue): { id: string; cluster: string; queue: string }[] {
-  const found = new Map<string, { id: string; cluster: string; queue: string }>()
-  const visit = (value: JsonValue): void => {
+export function queueIds(listing: JsonValue): ScoQueueOption[] {
+  const found = new Map<string, ScoQueueOption>()
+  const owned = new Set<string>()
+  const visit = (value: JsonValue, owner?: JsonValue): void => {
     if (typeof value === 'string') {
       const match = /^\/subscriptions\/.+\/clusters\/([^/]+)\/queues\/([^/]+)$/.exec(value)
-      if (match !== null && !found.has(value)) {
-        const [cluster, queue] = match.slice(1) as [string, string]
-        found.set(value, { id: value, cluster, queue })
-      }
+      if (match === null || owned.has(value) || (found.has(value) && owner === undefined)) return
+      const [cluster, queue] = match.slice(1) as [string, string]
+      found.set(value, { id: value, cluster, queue, detail: owner ?? { id: value } })
+      if (owner !== undefined) owned.add(value)
     } else if (Array.isArray(value)) {
-      value.forEach(visit)
+      value.forEach((item) => { visit(item) })
     } else if (value !== null && typeof value === 'object') {
-      Object.values(value).forEach(visit)
+      for (const [key, child] of Object.entries(value)) visit(child, key === 'id' ? value : undefined)
     }
   }
   visit(listing)
@@ -214,7 +216,7 @@ export function mentions(value: JsonValue, code: string): boolean {
 }
 
 /**
- * Collect the machine type codes a queue object names under `spec_code` keys.
+ * Collect the machine type codes a queue object names under `spec_code` or `machine_type` keys.
  * @param value - the CLI's queue object.
  * @returns distinct codes in first-seen order.
  */
@@ -224,7 +226,7 @@ export function machineTypes(value: JsonValue): string[] {
     if (Array.isArray(node)) node.forEach(visit)
     else if (node !== null && typeof node === 'object') {
       for (const [key, child] of Object.entries(node)) {
-        if (key === 'spec_code' && typeof child === 'string') codes.add(child)
+        if ((key === 'spec_code' || key === 'machine_type') && typeof child === 'string') codes.add(child)
         else visit(child)
       }
     }

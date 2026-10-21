@@ -3100,7 +3100,7 @@ Source: [`packages/experimental/tool-sco/src/index.ts`](../packages/experimental
 
 ### `sco_resource_options`
 
-Read the queues a workspace can submit to and each queue's CLI object, which lists the machine types (spec_code) its workloads accept. Results are cached locally; set refresh only after a submission failed on machine type, queue, or quota, or when the user asks. Offer machine types and queues to the user as choices instead of asking them to type one.
+Read the queues a workspace can submit to and each queue's CLI object, whose properties.machine_type_allocation lists the machine types allocated to it with their quota. Results are cached locally; set refresh only after a submission failed on machine type, queue, or quota, or when the user asks. Offer machine types and queues to the user as choices instead of asking them to type one.
 
 ```json
 {

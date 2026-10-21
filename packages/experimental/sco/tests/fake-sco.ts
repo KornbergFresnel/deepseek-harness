@@ -22,7 +22,10 @@ const QUEUES = '/subscriptions/s/resourceGroups/r/regions/cn/clusters/'
 if (group === 'workspaces') {
   if (target === 'ws-fail') { process.stderr.write('workspace not found\n'); process.exit(5) }
   if (target === 'ws-empty') { process.stdout.write(JSON.stringify({ items: [{ name: 'gpu-a', cluster: 'c1' }] })); return }
-  process.stdout.write(JSON.stringify({ queues: [{ id: QUEUES + 'c1/queues/gpu-a' }, { id: QUEUES + 'c1/queues/gpu-a', alias: true }, { id: QUEUES + 'c2/queues/cpu-b' }, { note: 'not a queue id' }] }))
+  const queue = (cluster, name, machineType) => ({
+    id: QUEUES + cluster + '/queues/' + name, name, properties: { cluster: { id: QUEUES + cluster }, machine_type_allocation: [{ machine_type: machineType }] },
+  })
+  process.stdout.write(JSON.stringify([queue('c1', 'gpu-a', 'h1ls.rp.k60a'), queue('c2', 'cpu-b', 'c6.large'), { note: 'not a queue id' }]))
   return
 }
 if (group === 'queues') {

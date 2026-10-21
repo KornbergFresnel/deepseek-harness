@@ -183,7 +183,12 @@ describe('submission expansion', () => {
 
   it('finds queue ids and machine types in untyped CLI JSON', () => {
     const id = '/subscriptions/s/resourceGroups/r/regions/cn/clusters/c1/queues/gpu-a'
-    expect(queueIds({ items: [{ id, n: 1, ok: true, none: null }, [id], 'unrelated'] })).toEqual([{ id, cluster: 'c1', queue: 'gpu-a' }])
+    const other = '/subscriptions/s/resourceGroups/r/regions/cn/clusters/c2/queues/cpu-b'
+    const entry = { id, n: 1, ok: true, none: null }
+    expect(queueIds({ refs: [id, other], items: [entry, { id, alias: true }, [id], 'unrelated'] })).toEqual([
+      { id, cluster: 'c1', queue: 'gpu-a', detail: entry },
+      { id: other, cluster: 'c2', queue: 'cpu-b', detail: { id: other } },
+    ])
     expect(mentions({ workloads: [{ spec_code: 'h1' }, 3] }, 'h1')).toBe(true)
     expect(mentions({ workloads: [{ spec_code: 'h1' }, null] }, 'h2')).toBe(false)
   })
@@ -200,15 +205,14 @@ describe('resource options and submission', () => {
     const { ctx, fake } = await boot({ sco: { profile: 'pjlab' } })
     const options = await ctx.scoSubmit.resourceOptions()
     expect(options.workspace).toBe('team-a')
-    expect(options.queues.map(queue => [queue.id.split('/clusters/')[1], queue.detail])).toEqual([
-      ['c1/queues/gpu-a', { name: 'gpu-a', workloads: [{ spec_code: 'h1ls.rp.k60a' }] }],
-      ['c2/queues/cpu-b', { name: 'cpu-b', workloads: [{ spec_code: 'c6.large' }] }],
+    expect(options.queues.map(queue => [queue.id.split('/clusters/')[1], queue.cluster, queue.queue, machineTypes(queue.detail)])).toEqual([
+      ['c1/queues/gpu-a', 'c1', 'gpu-a', ['h1ls.rp.k60a']],
+      ['c2/queues/cpu-b', 'c2', 'cpu-b', ['c6.large']],
     ])
     expect(await ctx.scoSubmit.resourceOptions()).toEqual(options)
     await ctx.scoSubmit.resourceOptions({ refresh: true })
     expect((await fake.calls()).map(argv => argv.slice(2, 4))).toEqual([
-      ['workspaces', 'list-queues'], ['queues', 'get'], ['queues', 'get'],
-      ['workspaces', 'list-queues'], ['queues', 'get'], ['queues', 'get'],
+      ['workspaces', 'list-queues'], ['workspaces', 'list-queues'],
     ])
   })
 
@@ -306,6 +310,6 @@ describe('clusterConfig Remote namespace', () => {
     abort.abort()
     expect(await ctx.scoSubmit.follow(abort.signal)[Symbol.asyncIterator]().next()).toEqual({ done: true, value: undefined })
     expect(await ctx.scoSubmit.overview()).toEqual({ outputMountPath: '/outputs', sources: [], templates: [{ name: 'wbt-train', template: TEMPLATES['wbt-train'] }] })
-    expect(machineTypes([{ spec_code: 'a' }, { nested: { spec_code: 'b', other: 'c' } }, { spec_code: 'a' }, { spec_code: 1 }, null])).toEqual(['a', 'b'])
+    expect(machineTypes([{ spec_code: 'a' }, { nested: { machine_type: 'b', other: 'c' } }, { spec_code: 'a' }, { spec_code: 1 }, null])).toEqual(['a', 'b'])
   })
 })

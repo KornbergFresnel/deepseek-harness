@@ -131,7 +131,7 @@ describe('SSP job operations through the sco CLI', () => {
     const { ctx, fake } = await gateway({ profile: 'pjlab' })
     expect(ctx.sco.profile).toBe('pjlab')
     await expect(ctx.sco.listQueues()).rejects.toThrow('listing queues needs a workspace')
-    expect(await ctx.sco.listQueues({ workspace: 'team-a' })).toHaveProperty('queues')
+    expect(await ctx.sco.listQueues({ workspace: 'team-a' })).toHaveLength(3)
     expect(await ctx.sco.describeQueue('c1', 'gpu-a')).toEqual({ name: 'gpu-a', workloads: [{ spec_code: 'h1ls.rp.k60a' }] })
     await expect(ctx.sco.listQueues({ workspace: 'ws-fail' })).rejects.toThrow('sco ssp workspaces list-queues failed (5): workspace not found')
     await expect(ctx.sco.describeQueue('--help', 'q')).rejects.toThrow('cluster "--help" must start with a letter or digit')
