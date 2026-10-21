@@ -24,8 +24,8 @@ export const AFS_VOLUME_RESOURCE = 'storage.afs.v2.volume'
  * Collect resource names from one `sco srm resources list --format=json` page.
  * @param page - parsed CLI output.
  * @param type - SRM resource `type` to keep.
- * @returns the page's resource ids, and for resources of `type` the keys a volume id may match (`id`, `name`, and the last
- *   `rid` segment) mapped to `display_name`, else `name`, when that is non-empty and not the key itself.
+ * @returns the page's resource ids, and for resources of `type` each `id` (the AFS volume id) mapped to `display_name`, else
+ *   `name`, when one is non-empty.
  */
 export function parseResourcePage(page: JsonValue, type: string): { ids: string[]; names: Map<string, string> } {
   if (!Array.isArray(page)) throw new Error('sco srm resources list returned JSON that is not an array')
@@ -37,10 +37,7 @@ export function parseResourcePage(page: JsonValue, type: string): { ids: string[
     ids.push(text(entry.id))
     if (entry.type !== type) continue
     const label = text(entry.display_name) || text(entry.name)
-    const rid = text(entry.rid)
-    for (const key of [text(entry.id), text(entry.name), rid.slice(rid.lastIndexOf('/') + 1)]) {
-      if (key !== '' && label !== '' && label !== key) names.set(key, label)
-    }
+    if (label !== '') names.set(text(entry.id), label)
   }
   return { ids, names }
 }

@@ -21,8 +21,8 @@ if (argv.includes('srm')) {
   const token = Number(argv.find(arg => arg.startsWith('--page-token=')).slice(13))
   const eni = index => ({ id: 'eni-' + index, name: 'eni-' + index, display_name: 'eni ' + index, type: 'network.vpc.v2.eni' })
   const volume = { id: 'vol-b', name: 'afs-team', display_name: '', rid: '/subscriptions/s/zones/z/volumes/afs-team', type: 'storage.afs.v2.volume' }
-  const shared = { id: 'srm-1', name: 'vol-c', display_name: 'shared data', rid: '/subscriptions/s/zones/z/volumes/vol-c', type: 'storage.afs.v2.volume' }
-  const unnamed = { id: 'vol-d', name: 'vol-d', type: 'storage.afs.v2.volume' }
+  const shared = { id: 'vol-c', name: 'afs-shared', display_name: 'shared data', type: 'storage.afs.v2.volume' }
+  const unnamed = { id: 'vol-d', name: '', type: 'storage.afs.v2.volume' }
   if (fs.existsSync(join(__dirname, 'srm-repeat'))) process.stdout.write(JSON.stringify(Array.from({ length: 100 }, (_, index) => eni(index))))
   else if (token === 1) process.stdout.write(JSON.stringify([...Array.from({ length: 99 }, (_, index) => eni(index)), volume]))
   else process.stdout.write(JSON.stringify([shared, unnamed, { id: 'eni-x' }]))
