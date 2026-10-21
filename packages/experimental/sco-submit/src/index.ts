@@ -219,8 +219,14 @@ export class ScoSubmit extends TypertRemoteService {
     const key = this.optionsKey(workspace)
     const cached = table.get(key)
     if (cached !== undefined && request.refresh !== true) return cached
+    const listing = await this.ctx.sco.listQueues({ workspace }, signal)
+    const found = queueIds(listing)
+    if (found.length === 0) {
+      const excerpt = JSON.stringify(listing).slice(0, 600)
+      throw new Error(`sco-submit: no queue resource ids (/subscriptions/…/clusters/<cluster>/queues/<queue>) in sco ssp workspaces list-queues ${workspace} output: ${excerpt}`)
+    }
     const queues: ScoQueueOption[] = []
-    for (const { id, cluster, queue } of queueIds(await this.ctx.sco.listQueues({ workspace }, signal))) {
+    for (const { id, cluster, queue } of found) {
       queues.push({ id, cluster, queue, detail: await this.ctx.sco.describeQueue(cluster, queue, signal) })
     }
     const options: ScoResourceOptions = { workspace, fetchedAt: new Date().toISOString(), queues }

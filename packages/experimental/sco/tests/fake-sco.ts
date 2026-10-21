@@ -21,6 +21,7 @@ const [command, target] = rest
 const QUEUES = '/subscriptions/s/resourceGroups/r/regions/cn/clusters/'
 if (group === 'workspaces') {
   if (target === 'ws-fail') { process.stderr.write('workspace not found\n'); process.exit(5) }
+  if (target === 'ws-empty') { process.stdout.write(JSON.stringify({ items: [{ name: 'gpu-a', cluster: 'c1' }] })); return }
   process.stdout.write(JSON.stringify({ queues: [{ id: QUEUES + 'c1/queues/gpu-a' }, { id: QUEUES + 'c1/queues/gpu-a', alias: true }, { id: QUEUES + 'c2/queues/cpu-b' }, { note: 'not a queue id' }] }))
   return
 }

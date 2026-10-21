@@ -212,6 +212,12 @@ describe('resource options and submission', () => {
     ])
   })
 
+  it('fails with a listing excerpt when the queue listing holds no queue ids', async () => {
+    const { ctx } = await boot()
+    await expect(ctx.scoSubmit.resourceOptions({ workspace: 'ws-empty' }))
+      .rejects.toThrow('no queue resource ids (/subscriptions/…/clusters/<cluster>/queues/<queue>) in sco ssp workspaces list-queues ws-empty output: {"items":[{"name":"gpu-a","cluster":"c1"}]}')
+  })
+
   it('needs a workspace for resource options', async () => {
     const { ctx } = await boot({ noWorkspace: true })
     await expect(ctx.scoSubmit.resourceOptions()).rejects.toThrow('resource options need a workspace')

@@ -52,7 +52,7 @@ kind: "package-reference"
 
 `resolve` 把指定模板和请求字段合并，请求字段优先；`env` 按键合并。模板里的数据源名在此时解析，所以删除的数据源会让下一次引用它的提交失败。`submit` 在有缓存时用工作空间的缓存选项校验 `machineType`，执行 `createJob`，真正创建后发出带模板、代码 ref、数据和输出名的 `sco/job-submitted` 事件。CLI 拒绝创建且错误信息提到机型、规格、队列、配额或 GPU 时，`submit` 会先刷新缓存选项再抛出错误，并在错误里说明已刷新。
 
-`resourceOptions` 执行 `sco ssp workspaces list-queues`，再对列表里找到的每个队列 id 执行一次 `sco ssp queues get`，按 sco profile 和工作空间保存结果；设置 `refresh` 之前一直返回保存的副本。它需要从请求或网关配置得到工作空间。
+`resourceOptions` 执行 `sco ssp workspaces list-queues`，再对列表里找到的每个队列 id 执行一次 `sco ssp queues get`，按 sco profile 和工作空间保存结果；设置 `refresh` 之前一直返回保存的副本。它需要从请求或网关配置得到工作空间；列表里找不到任何队列 id 时失败，并在错误里附上列表片段。
 
 本服务还为[集群配置页面](../client-ui-cluster-monitor/README.zh.md)提供 `clusterConfig` Remote 命名空间：`overview()` 返回 profile、默认工作空间和队列、`outputMountPath`、数据源、模板，以及默认工作空间的缓存选项和每个队列里识别出的机型；`follow()` 在每次数据源变化或选项刷新后推送新的概览；`saveSource({ name, source, replace? })` 添加数据源，设置 `replace` 时替换已有数据源；`deleteSource(name)`、`refreshOptions()` 和 `volumes()` 分别删除数据源、重新查询默认工作空间和列出 AFS 存储卷。记录类型从 `@deepseek-ai/dsh-experimental-sco-submit/types` 导出。
 

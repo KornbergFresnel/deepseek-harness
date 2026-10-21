@@ -162,7 +162,7 @@ describe('SSP job operations through the sco CLI', () => {
     expect(await ctx.sco.listDirectoryQuotas('vol-a')).toEqual([{ volume: 'vol-a', dir: '/data', limit: '10TB' }])
     await expect(ctx.sco.listDirectoryQuotas('-h')).rejects.toThrow('volume "-h" must start with a letter or digit')
     expect(await fake.calls()).toEqual([
-      ...Array.from({ length: 4 }, () => ['--profile=pjlab', 'afs', 'volumes', 'list', '--format=json']),
+      ...Array.from({ length: 4 }, () => ['--profile=pjlab', 'afs', 'volumes', 'list', '--page-size=1000', '--format=json']),
       ['--profile=pjlab', 'afs', 'volumes', 'list-dir-quota', '--instance=vol-a', '--format=json'],
     ])
   })

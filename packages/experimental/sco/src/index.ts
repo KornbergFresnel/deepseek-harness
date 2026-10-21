@@ -206,7 +206,7 @@ export class ScoGateway extends Service {
    * @returns one record per volume with its used percentage; output that is not an array of objects with an `ID` fails.
    */
   async listVolumes(signal?: AbortSignal): Promise<ScoAfsVolume[]> {
-    return parseVolumes(await this.json(['afs', 'volumes'], ['list', '--format=json'], signal))
+    return parseVolumes(await this.json(['afs', 'volumes'], ['list', '--page-size=1000', '--format=json'], signal))
   }
 
   /**
