@@ -291,6 +291,8 @@
     "@deepseek-ai/dsh-experimental-worktree": "workspace:*",
     "@deepseek-ai/dsh-experimental-tool-worktree": "workspace:*",
     "@deepseek-ai/dsh-experimental-sco-submit": "workspace:*",
+    "@deepseek-ai/dsh-experimental-git-branch": "workspace:*",
+    "@deepseek-ai/dsh-experimental-client-ui-git-branch": "workspace:*",
     "@deepseek-ai/dsh-experimental-tool-sco": "workspace:*",
     "@deepseek-ai/dsh-experimental-cluster-monitor": "workspace:*",
     "@deepseek-ai/dsh-experimental-client-ui-cluster-monitor": "workspace:*",

@@ -261,17 +261,23 @@ flowchart TD
     pkg_experimental_claude_code_mods["experimental-claude-code-mods"]
     pkg_experimental_client_ui_agent_team["experimental-client-ui-agent-team"]
     pkg_experimental_client_ui_claude_code_mods["experimental-client-ui-claude-code-mods"]
+    pkg_experimental_client_ui_cluster_monitor["experimental-client-ui-cluster-monitor"]
     pkg_experimental_client_ui_cot_translation["experimental-client-ui-cot-translation"]
+    pkg_experimental_client_ui_git_branch["experimental-client-ui-git-branch"]
     pkg_experimental_client_ui_voice_input["experimental-client-ui-voice-input"]
+    pkg_experimental_cluster_monitor["experimental-cluster-monitor"]
     pkg_experimental_computer_use_cua_driver_mcp["experimental-computer-use-cua-driver-mcp"]
     pkg_experimental_computer_use_cua_driver_native["experimental-computer-use-cua-driver-native"]
     pkg_experimental_cot_translation_bundle["experimental-cot-translation-bundle"]
     pkg_experimental_cua_macos["experimental-cua-macos"]
+    pkg_experimental_git_branch["experimental-git-branch"]
     pkg_experimental_inspector["experimental-inspector"]
     pkg_experimental_inspector_profile["experimental-inspector-profile"]
     pkg_experimental_plugin_market_bundle["experimental-plugin-market-bundle"]
     pkg_experimental_ptc_runtime_python["experimental-ptc-runtime-python"]
     pkg_experimental_ralph_bundle["experimental-ralph-bundle"]
+    pkg_experimental_sco["experimental-sco"]
+    pkg_experimental_sco_submit["experimental-sco-submit"]
     pkg_experimental_session_inspector["experimental-session-inspector"]
     pkg_experimental_session_search["experimental-session-search"]
     pkg_experimental_session_titles_bundle["experimental-session-titles-bundle"]
@@ -279,6 +285,7 @@ flowchart TD
     pkg_experimental_speech_to_text_sensevoice["experimental-speech-to-text-sensevoice"]
     pkg_experimental_terminal_bundle["experimental-terminal-bundle"]
     pkg_experimental_tool_agent_team["experimental-tool-agent-team"]
+    pkg_experimental_tool_sco["experimental-tool-sco"]
     pkg_experimental_tool_worktree["experimental-tool-worktree"]
     pkg_experimental_translator["experimental-translator"]
     pkg_experimental_voice_input_bundle["experimental-voice-input-bundle"]
@@ -501,6 +508,8 @@ flowchart TD
   pkg_hmr --> pkg_app_boot
   pkg_hmr --> pkg_cmdline
   pkg_experimental_computer_use_cua_driver_mcp --> pkg_computer_use
+  pkg_experimental_sco --> pkg_subprocess
+  pkg_experimental_sco --> pkg_util_values
   pkg_experimental_webworker_runtime --> pkg_client_connection
   pkg_experimental_webworker_runtime --> pkg_client_modules
   pkg_experimental_webworker_runtime --> pkg_host_webserver
@@ -540,6 +549,14 @@ flowchart TD
   pkg_session_log_export --> pkg_session_persistence
   pkg_config_editor --> pkg_app_boot
   pkg_config_editor --> pkg_hmr
+  pkg_experimental_cluster_monitor --> pkg_experimental_sco
+  pkg_experimental_cluster_monitor --> pkg_storage_domain
+  pkg_experimental_cluster_monitor --> pkg_typert_protocol
+  pkg_experimental_cluster_monitor --> pkg_util_values
+  pkg_experimental_sco_submit --> pkg_experimental_sco
+  pkg_experimental_sco_submit --> pkg_storage_domain
+  pkg_experimental_sco_submit --> pkg_typert_protocol
+  pkg_experimental_sco_submit --> pkg_util_values
   pkg_experimental_speech_to_text --> pkg_settings
   pkg_experimental_translator --> pkg_credentials
   pkg_experimental_translator --> pkg_launch_environment
@@ -758,6 +775,10 @@ flowchart TD
   pkg_deepseek_account_platform --> pkg_credentials
   pkg_deepseek_account_platform --> pkg_deepseek_account
   pkg_deepseek_account_platform --> pkg_host_webserver
+  pkg_experimental_git_branch --> pkg_agent
+  pkg_experimental_git_branch --> pkg_subprocess
+  pkg_experimental_git_branch --> pkg_typert_protocol
+  pkg_experimental_git_branch --> pkg_working_directory
   pkg_experimental_ptc_runtime_python --> pkg_ptc_runtime
   pkg_experimental_ptc_runtime_python --> pkg_sandbox
   pkg_experimental_ptc_runtime_python --> pkg_sandbox_policy
@@ -936,6 +957,9 @@ flowchart TD
   pkg_experimental_cua_macos --> pkg_system_prompt
   pkg_experimental_cua_macos --> pkg_tools
   pkg_experimental_cua_macos --> pkg_user_questions
+  pkg_experimental_tool_sco --> pkg_experimental_sco
+  pkg_experimental_tool_sco --> pkg_experimental_sco_submit
+  pkg_experimental_tool_sco --> pkg_tools
   pkg_experimental_tool_worktree --> pkg_experimental_worktree
   pkg_experimental_tool_worktree --> pkg_tools
   pkg_hooks_codex --> pkg_agent
@@ -1534,6 +1558,8 @@ flowchart TD
 | [`experimental-badge-skill-bundle`](../packages/experimental/badge-skill-bundle) | `experimental` | — |
 | [`experimental-client-ui-agent-team`](../packages/experimental/client-ui-agent-team) | `experimental` | — |
 | [`experimental-client-ui-claude-code-mods`](../packages/experimental/client-ui-claude-code-mods) | `experimental` | — |
+| [`experimental-client-ui-cluster-monitor`](../packages/experimental/client-ui-cluster-monitor) | `experimental` | — |
+| [`experimental-client-ui-git-branch`](../packages/experimental/client-ui-git-branch) | `experimental` | — |
 | [`experimental-client-ui-voice-input`](../packages/experimental/client-ui-voice-input) | `experimental` | — |
 | [`experimental-cot-translation-bundle`](../packages/experimental/cot-translation-bundle) | `experimental` | — |
 | [`experimental-inspector`](../packages/experimental/inspector) | `experimental` | — |
@@ -1594,6 +1620,7 @@ flowchart TD
 | [`attachment-local`](../packages/attachment/attachment-local) | `attachment` | [`attachment`](../packages/attachment/attachment), [`home-paths`](../packages/util/home-paths) |
 | [`hmr`](../packages/boot/hmr) | `boot` | [`app-boot`](../packages/boot/app-boot), [`cmdline`](../packages/boot/cmdline) |
 | [`experimental-computer-use-cua-driver-mcp`](../packages/experimental/computer-use-cua-driver-mcp) | `experimental` | [`computer-use`](../packages/computer-use/computer-use) |
+| [`experimental-sco`](../packages/experimental/sco) | `experimental` | [`subprocess`](../packages/subprocess/subprocess), [`util-values`](../packages/util/values) |
 | [`experimental-webworker-runtime`](../packages/experimental/webworker-runtime) | `experimental` | [`client-connection`](../packages/client/connection), [`client-modules`](../packages/client/modules), [`host-webserver`](../packages/host/webserver) |
 | [`skill-badge`](../packages/experimental/skill-badge) | `experimental` | [`skill`](../packages/skill/skill) |
 | [`host-directory-picker-auto`](../packages/host/directory-picker-auto) | `host` | [`client-connection`](../packages/client/connection), [`client-ui-directory-picker-browse`](../packages/client/ui-directory-picker-browse), [`client-ui-directory-picker-native`](../packages/client/ui-directory-picker-native), [`host-directory-picker-browse`](../packages/host/directory-picker-browse), [`host-directory-picker-native`](../packages/host/directory-picker-native), [`host-webserver`](../packages/host/webserver) |
@@ -1613,6 +1640,8 @@ flowchart TD
 | [`spill-local`](../packages/spill/spill-local) | `spill` | [`spill`](../packages/spill/spill) |
 | [`session-log-export`](../packages/session-query/session-log-export) | `session-query` | [`session`](../packages/core/session), [`session-persistence`](../packages/session/session-persistence) |
 | [`config-editor`](../packages/boot/config-editor) | `boot` | [`app-boot`](../packages/boot/app-boot), [`hmr`](../packages/boot/hmr) |
+| [`experimental-cluster-monitor`](../packages/experimental/cluster-monitor) | `experimental` | [`experimental-sco`](../packages/experimental/sco), [`storage-domain`](../packages/storage/storage-domain), [`typert-protocol`](../packages/typert/protocol), [`util-values`](../packages/util/values) |
+| [`experimental-sco-submit`](../packages/experimental/sco-submit) | `experimental` | [`experimental-sco`](../packages/experimental/sco), [`storage-domain`](../packages/storage/storage-domain), [`typert-protocol`](../packages/typert/protocol), [`util-values`](../packages/util/values) |
 | [`experimental-speech-to-text`](../packages/experimental/speech-to-text) | `experimental` | [`settings`](../packages/settings/settings) |
 | [`experimental-translator`](../packages/experimental/translator) | `experimental` | [`credentials`](../packages/credentials/credentials), [`launch-environment`](../packages/util/launch-environment), [`llm`](../packages/llm/llm), [`session`](../packages/core/session), [`session-persistence`](../packages/session/session-persistence), [`timeout`](../packages/util/timeout), [`util-values`](../packages/util/values) |
 | [`host-product-telemetry-otel`](../packages/host/product-telemetry-otel) | `host` | [`otel`](../packages/telemetry/otel) |
@@ -1667,6 +1696,7 @@ flowchart TD
 | [`api-account-controller`](../packages/api/account-controller) | `api` | [`agent`](../packages/core/agent), [`deepseek-account`](../packages/credentials/deepseek-account), [`typert-protocol`](../packages/typert/protocol) |
 | [`compaction`](../packages/compaction/compaction) | `compaction` | [`brand`](../packages/util/brand), [`commands`](../packages/interaction/commands), [`llm`](../packages/llm/llm), [`session`](../packages/core/session) |
 | [`deepseek-account-platform`](../packages/credentials/deepseek-account-platform) | `credentials` | [`authorization`](../packages/credentials/authorization), [`credentials`](../packages/credentials/credentials), [`deepseek-account`](../packages/credentials/deepseek-account), [`host-webserver`](../packages/host/webserver) |
+| [`experimental-git-branch`](../packages/experimental/git-branch) | `experimental` | [`agent`](../packages/core/agent), [`subprocess`](../packages/subprocess/subprocess), [`typert-protocol`](../packages/typert/protocol), [`working-directory`](../packages/session/working-directory) |
 | [`experimental-ptc-runtime-python`](../packages/experimental/ptc-runtime-python) | `experimental` | [`ptc-runtime`](../packages/ptc-runtime/ptc-runtime), [`sandbox`](../packages/sandbox/sandbox), [`sandbox-policy`](../packages/sandbox/sandbox-policy), [`timeout`](../packages/util/timeout), [`util-values`](../packages/util/values) |
 | [`experimental-worktree`](../packages/experimental/worktree) | `experimental` | [`agent`](../packages/core/agent), [`fs`](../packages/fs/fs), [`sandbox`](../packages/sandbox/sandbox), [`sandbox-policy`](../packages/sandbox/sandbox-policy), [`subprocess`](../packages/subprocess/subprocess), [`working-directory`](../packages/session/working-directory) |
 | [`command-feedback`](../packages/feedback/command-feedback) | `feedback` | [`anonymous-user-id`](../packages/identity/anonymous-user-id), [`commands`](../packages/interaction/commands), [`session`](../packages/core/session), [`typert-protocol`](../packages/typert/protocol) |
@@ -1700,6 +1730,7 @@ flowchart TD
 | [`experimental-browser-use-stagehand-native`](../packages/experimental/browser-use-stagehand-native) | `experimental` | [`agent`](../packages/core/agent), [`browser-use`](../packages/browser-use/browser-use), [`system-prompt`](../packages/core/system-prompt), [`tools`](../packages/core/tools) |
 | [`experimental-computer-use-cua-driver-native`](../packages/experimental/computer-use-cua-driver-native) | `experimental` | [`computer-use`](../packages/computer-use/computer-use), [`system-prompt`](../packages/core/system-prompt), [`tools`](../packages/core/tools) |
 | [`experimental-cua-macos`](../packages/experimental/cua-macos) | `experimental` | [`agent`](../packages/core/agent), [`computer-use`](../packages/computer-use/computer-use), [`subprocess`](../packages/subprocess/subprocess), [`system-prompt`](../packages/core/system-prompt), [`tools`](../packages/core/tools), [`user-questions`](../packages/interaction/user-questions) |
+| [`experimental-tool-sco`](../packages/experimental/tool-sco) | `experimental` | [`experimental-sco`](../packages/experimental/sco), [`experimental-sco-submit`](../packages/experimental/sco-submit), [`tools`](../packages/core/tools) |
 | [`experimental-tool-worktree`](../packages/experimental/tool-worktree) | `experimental` | [`experimental-worktree`](../packages/experimental/worktree), [`tools`](../packages/core/tools) |
 | [`hooks-codex`](../packages/experimental/hooks-codex) | `experimental` | [`agent`](../packages/core/agent), [`hook-protocol`](../packages/experimental/hook-protocol), [`llm`](../packages/llm/llm), [`session`](../packages/core/session), [`session-projection`](../packages/session/session-projection), [`tools`](../packages/core/tools), [`working-directory`](../packages/session/working-directory) |
 | [`session-title-all-prompts-llm`](../packages/experimental/session-title-all-prompts-llm) | `experimental` | [`llm`](../packages/llm/llm), [`session`](../packages/core/session), [`session-title`](../packages/session/session-title), [`session-title-llm`](../packages/session/session-title-llm) |

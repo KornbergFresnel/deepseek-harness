@@ -37,6 +37,8 @@ flowchart LR
   pkg_experimental_sco_submit["experimental-sco-submit"]
   svc_scoSubmit["ctx.scoSubmit<br/>SSP job composition from sources and templates"]
   svc_clusterMonitor["ctx.clusterMonitor<br/>Watched SSP job polling"]
+  pkg_experimental_git_branch["experimental-git-branch"]
+  svc_gitBranch["ctx.gitBranch<br/>Session Git branch"]
   pkg_working_directory["working-directory"]
   svc_workingDirectory["ctx.workingDirectory<br/>Session working directory"]
   pkg_tool_working_directory["tool-working-directory"]
@@ -353,6 +355,7 @@ flowchart LR
   pkg_experimental_cluster_monitor --> svc_clusterMonitor
   pkg_experimental_computer_use_cua_driver_mcp --> svc_computerUse
   pkg_experimental_computer_use_cua_driver_native --> svc_computerUse
+  pkg_experimental_git_branch --> svc_gitBranch
   pkg_experimental_ptc_runtime_python --> svc_ptcRuntime
   pkg_experimental_sco --> svc_sco
   pkg_experimental_sco_submit --> svc_scoSubmit
@@ -637,6 +640,7 @@ flowchart LR
 | `ctx.sco` | `seam` | [`experimental-sco`](../packages/experimental/sco) | [`experimental-sco`](../packages/experimental/sco) | [`experimental-tool-sco`](../packages/experimental/tool-sco), [`experimental-cluster-monitor`](../packages/experimental/cluster-monitor), [`experimental-sco-submit`](../packages/experimental/sco-submit) | - | Explicit experimental gateway to the local sco CLI. Runs unconfined because the CLI needs network access and its credential profile; the tool package asks before submission and stop. |
 | `ctx.scoSubmit` | `seam` | [`experimental-sco-submit`](../packages/experimental/sco-submit) | [`experimental-sco-submit`](../packages/experimental/sco-submit) | [`experimental-tool-sco`](../packages/experimental/tool-sco) | - | Explicit experimental registry of data, code, and output locations plus cached queue options; expands configured templates into gateway creation flags. |
 | `ctx.clusterMonitor` | `core` | [`experimental-cluster-monitor`](../packages/experimental/cluster-monitor) | - | - | - | Polls watched jobs through the SSP gateway on Host timers and serves state, log-derived metrics, and log tails to the Web page; nothing reaches a model request. |
+| `ctx.gitBranch` | `core` | [`experimental-git-branch`](../packages/experimental/git-branch) | - | - | - | Reads and switches the Git branch of a Session working directory through the Session subprocess provider for the Web client; nothing reaches a model request. |
 | `ctx.workingDirectory` | `seam` | [`working-directory`](../packages/session/working-directory) | [`working-directory`](../packages/session/working-directory) | [`tool-working-directory`](../packages/session/tool-working-directory), [`tool-fs`](../packages/fs/tool-fs), [`tool-bash`](../packages/shell/tool-bash), [`tool-pwsh`](../packages/shell/tool-pwsh), [`subagent`](../packages/subagent/subagent), [`sdk-jsonrpc-server`](../packages/sdk/server) | - | One Session projection owns the effective execution directory. The filesystem validates changes; user context reports them while original metadata and write grants stay fixed. |
 | `ctx.mcpResources` | `seam` | [`mcp-resources`](../packages/mcp/mcp-resources) | [`mcp-client`](../packages/mcp/mcp-client) | [`mcp-resources`](../packages/mcp/mcp-resources) | - | Connection-owned providers serve shared resource tools in the calling agent scope. |
 | `ctx.browserUse` | `seam` | [`browser-use`](../packages/browser-use/browser-use) | [`experimental-browser-use-playwright-mcp`](../packages/experimental/browser-use-playwright-mcp), [`experimental-browser-use-chrome-devtools-mcp`](../packages/experimental/browser-use-chrome-devtools-mcp), [`experimental-browser-use-stagehand-native`](../packages/experimental/browser-use-stagehand-native) | [`experimental-browser-use-playwright-mcp`](../packages/experimental/browser-use-playwright-mcp), [`experimental-browser-use-chrome-devtools-mcp`](../packages/experimental/browser-use-chrome-devtools-mcp), [`experimental-browser-use-stagehand-native`](../packages/experimental/browser-use-stagehand-native) | - | One provider-owned name per service instance. Providers own their tools and browser resources per live Session; the shared service has no browser operation API. |

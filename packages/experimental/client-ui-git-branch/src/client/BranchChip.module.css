@@ -1,0 +1,54 @@
+/* Branch chip on the New Session screen, after the agent-preset chip.
+   Geometry mirrors the preset chip so the row reads as one set of controls. */
+
+/* The Menu anchor wrapper: its explicit floor is the icon-only end state, so
+   a long branch name ellipsizes instead of crushing the glyphs. */
+.menuAnchor {
+  min-width: 54px;
+  max-width: 100%;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: min(100%, 240px);
+  min-height: 28px;
+  padding: 0 8px;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.chip:not(:disabled):hover,
+.chip[aria-expanded='true'] {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.chip:disabled {
+  cursor: default;
+  color: var(--dsw-alias-label-quaternary);
+}
+
+.icon {
+  flex: none;
+}
+
+.label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chevron {
+  flex: none;
+  color: var(--dsw-alias-label-caption);
+}

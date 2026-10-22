@@ -88,6 +88,8 @@ kind: "package-group"
 | [`tool-sco`](tool-sco/README.zh.md) | 面向模型的 SSP 训练任务工具，提交和停止前先询问 | `ctx.tools` |
 | [`cluster-monitor`](cluster-monitor/README.zh.md) | 在 Host 上轮询关注的 SSP 任务：状态、训练曲线和日志 | `ctx.clusterMonitor` |
 | [`client-ui-cluster-monitor`](client-ui-cluster-monitor/README.zh.md) | 关注的 SSP 任务的集群任务页面 | — |
+| [`git-branch`](git-branch/README.zh.md) | 会话工作目录的当前分支和分支切换 | `ctx.gitBranch` |
+| [`client-ui-git-branch`](client-ui-git-branch/README.zh.md) | 新会话页面的 Git 分支按钮 | — |
 
 -----
 

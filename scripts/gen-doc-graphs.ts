@@ -205,6 +205,13 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Polls watched jobs through the SSP gateway on Host timers and serves state, log-derived metrics, and log tails to the Web page; nothing reaches a model request.',
   },
   {
+    key: 'gitBranch',
+    pkg: 'experimental-git-branch',
+    title: 'Session Git branch',
+    mode: 'core',
+    note: 'Reads and switches the Git branch of a Session working directory through the Session subprocess provider for the Web client; nothing reaches a model request.',
+  },
+  {
     key: 'workingDirectory',
     pkg: 'working-directory',
     title: 'Session working directory',

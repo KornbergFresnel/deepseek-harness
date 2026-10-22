@@ -1072,6 +1072,31 @@ export type Config = CuaConfig
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-cua-macos -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-git-branch -->
+<a id="deepseek-aidsh-experimental-git-branch"></a>
+
+## `@deepseek-ai/dsh-experimental-git-branch`
+
+- `inject`: `typert`
+- `source`: [`packages/experimental/git-branch/src/index.ts:23`](../packages/experimental/git-branch/src/index.ts)
+
+```ts config-catalog
+/** Executable and limits for every Git command. */
+export interface Config {
+  /** Git executable path or PATH name, resolved by the Session's subprocess provider. */
+  readonly command: string
+  /** Milliseconds before one Git command is terminated. */
+  readonly timeoutMs: number
+  /** Milliseconds a terminated Git command gets to exit. */
+  readonly graceMs: number
+  /** Bytes of stdout or stderr kept per Git command; a branch listing beyond it fails. */
+  readonly maxOutputBytes: number
+  /** Most local and most remote-tracking branches returned, each. */
+  readonly maxBranches: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-git-branch -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-inspector -->
 <a id="deepseek-aidsh-experimental-inspector"></a>
 
@@ -4802,6 +4827,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 | `@deepseek-ai/dsh-experimental-client-ui-agent-team` | — | [`packages/experimental/client-ui-agent-team/src/index.ts`](../packages/experimental/client-ui-agent-team/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-client-ui-claude-code-mods` | — | [`packages/experimental/client-ui-claude-code-mods/src/index.ts`](../packages/experimental/client-ui-claude-code-mods/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-client-ui-cluster-monitor` | — | [`packages/experimental/client-ui-cluster-monitor/src/index.ts`](../packages/experimental/client-ui-cluster-monitor/src/index.ts) |
+| `@deepseek-ai/dsh-experimental-client-ui-git-branch` | — | [`packages/experimental/client-ui-git-branch/src/index.ts`](../packages/experimental/client-ui-git-branch/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-client-ui-voice-input` | — | [`packages/experimental/client-ui-voice-input/src/index.ts`](../packages/experimental/client-ui-voice-input/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-computer-use-cua-driver-native` | `computerUse` · `tools` · `systemPrompt` | [`packages/experimental/computer-use-cua-driver-native/src/index.ts`](../packages/experimental/computer-use-cua-driver-native/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-session-inspector` | — | [`packages/experimental/session-inspector/src/index.ts`](../packages/experimental/session-inspector/src/index.ts) |

@@ -1255,6 +1255,26 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'gitBranch',
+    summary: 'Serves branch state and switching to the Web client through the Session\'s own subprocess provider.',
+    description: 'Serves branch state and switching to the Web client through the Session\'s own subprocess provider.',
+    methods: [
+      {
+        signature: '@Remote async status(agent: Agent, signal: AbortSignal): Promise<GitBranchStatus>',
+        description: 'Read the branch state of the Session\'s working directory.',
+        parameters: [{ name: 'agent', description: 'Session owner supplied by the Gateway.' }, { name: 'signal', description: 'request cancellation.' }],
+        returns: '`none` outside a repository, otherwise the checked-out branch and the branches available to switch to.',
+      },
+      {
+        signature: '@Remote async switchBranch(agent: Agent, request: GitSwitchRequest, signal: AbortSignal): Promise<GitBranchRepository>',
+        description: 'Check out a listed branch in the Session\'s working directory with `git switch`, which keeps uncommitted changes that do not conflict and refuses otherwise.',
+        parameters: [{ name: 'agent', description: 'Session owner supplied by the Gateway.' }, { name: 'request', description: 'the branch, and whether it names a remote-tracking branch.' }, { name: 'signal', description: 'request cancellation; an abort after Git started leaves the outcome to Git.' }],
+        returns: 'the branch state after the switch.',
+        throws: ['when the directory is not a repository, the branch is not listed, or Git refuses the switch.'],
+      },
+    ],
+  },
+  {
     key: 'goals',
     summary: 'Goal service (`ctx.goals`) backed exclusively by the owning session log.',
     description: 'Goal service (`ctx.goals`) backed exclusively by the owning session log.',
@@ -5849,6 +5869,22 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'GenericResultView',
     declaration: 'export interface GenericResultView {\n    card: \'generic\';\n    title?: string;\n    content?: ContentBlock[];\n}',
+  },
+  {
+    name: 'GitBranchNone',
+    declaration: 'export interface GitBranchNone {\n    kind: \'none\';\n    cwd: string;\n}',
+  },
+  {
+    name: 'GitBranchRepository',
+    declaration: 'export interface GitBranchRepository {\n    kind: \'repository\';\n    cwd: string;\n    root: string;\n    branch: string | null;\n    commit: string;\n    local: string[];\n    remote: string[];\n    truncated: boolean;\n}',
+  },
+  {
+    name: 'GitBranchStatus',
+    declaration: 'export type GitBranchStatus = GitBranchNone | GitBranchRepository;',
+  },
+  {
+    name: 'GitSwitchRequest',
+    declaration: 'export interface GitSwitchRequest {\n    branch: string;\n    remote?: boolean;\n}',
   },
   {
     name: 'GoalActivation',

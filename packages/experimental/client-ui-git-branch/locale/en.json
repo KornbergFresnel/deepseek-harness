@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Git branch switcher",
+    "description": "Show the Git branch of a new Session's working directory beside the workspace picker and switch it from a menu."
+  }
+}

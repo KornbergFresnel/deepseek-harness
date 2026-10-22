@@ -64,6 +64,8 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/experimental/sco-submit': { kind: 'indirect', reason: 'The SSP job tools render source, option, and submission results; the service contributes no prompt text.' },
   'packages/experimental/cluster-monitor': { kind: 'none', reason: 'Polls SSP jobs on Host timers and serves results only to the Web client.' },
   'packages/experimental/client-ui-cluster-monitor': { kind: 'none', reason: 'Renders Host watch state in the browser without writing to a Session.' },
+  'packages/experimental/git-branch': { kind: 'none', reason: 'Serves branch state and switching only to the Web client.' },
+  'packages/experimental/client-ui-git-branch': { kind: 'none', reason: 'Reads and switches the working tree branch in the browser without writing to a Session.' },
   'packages/ssh/ssh': { kind: 'none', reason: 'The connection owner transports private provider operations; consumers own all model-facing content.' },
   'packages/ssh/fs-ssh': { kind: 'indirect', reason: 'The remote filesystem delegates model rendering to the existing filesystem consumers.' },
   'packages/ssh/subprocess-ssh': { kind: 'indirect', reason: 'The remote process provider delegates model rendering to Bash, terminal, LSP and ptc-runtime consumers.' },

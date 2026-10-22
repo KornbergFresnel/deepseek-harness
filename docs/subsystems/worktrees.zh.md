@@ -48,6 +48,37 @@ interface CreatedWorktree {
 
 Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnpm run verify-cordis-catalog` in doc-sync; regenerate with `pnpm run gen-cordis-catalog`) — the language sides differ only in locale-specific paired document paths. Signature blocks use a `ts cordis-catalog` fence and keep the original source JSDoc; dispatch modes are defined in the [primer](../cordis-primer.zh.md#dispatch-modes), and the framework-inherited `ctx` API lives in [cordis-api/inherited.md](../cordis-api/inherited.md).
 
+<a id="ctxgitbranch--gitbranchcontroller"></a>
+
+### `ctx.gitBranch` — `GitBranchController`
+
+Serves branch state and switching to the Web client through the Session's own subprocess provider.
+
+```ts cordis-catalog
+/**
+ * Read the branch state of the Session's working directory.
+ * @param agent - Session owner supplied by the Gateway.
+ * @param signal - request cancellation.
+ * @returns `none` outside a repository, otherwise the checked-out branch and the branches available to switch to.
+ */
+@Remote async status(agent: Agent, signal: AbortSignal): Promise<GitBranchStatus>
+
+/**
+ * Check out a listed branch in the Session's working directory with `git switch`, which keeps uncommitted changes
+ * that do not conflict and refuses otherwise.
+ * @param agent - Session owner supplied by the Gateway.
+ * @param request - the branch, and whether it names a remote-tracking branch.
+ * @param signal - request cancellation; an abort after Git started leaves the outcome to Git.
+ * @returns the branch state after the switch.
+ * @throws when the directory is not a repository, the branch is not listed, or Git refuses the switch.
+ */
+@Remote async switchBranch(agent: Agent, request: GitSwitchRequest, signal: AbortSignal): Promise<GitBranchRepository>
+```
+
+Types: [Agent](core.zh.md)
+
+Source: [`packages/experimental/git-branch/src/index.ts`](../../packages/experimental/git-branch/src/index.ts)
+
 <a id="ctxworktrees--worktreeservice"></a>
 
 ### `ctx.worktrees` — `WorktreeService`
