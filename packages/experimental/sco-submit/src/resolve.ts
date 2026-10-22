@@ -7,14 +7,17 @@ import type { ScoJobTemplate, ScoQueueOption, ScoResolvedSubmission, ScoSource, 
 const NAME = /^[a-z0-9][a-z0-9-]{0,62}$/
 /** Absolute container paths; segments exclude shell metacharacters so paths need no quoting in the startup command. */
 const MOUNT_PATH = /^(\/[A-Za-z0-9._-]+)+$/
-/** Relative directories inside a volume. */
-const SUBPATH = /^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/
+/** Directories inside a volume after leading and trailing `/` are removed; empty is the volume root. */
+const SUBPATH = /^([A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*)?$/
 /** Code refs: one directory name. */
 const REF = /^[A-Za-z0-9._-]+$/
 const VOLUME_ID = /^[A-Za-z0-9-]+$/
 const BUCKET = /^[a-z0-9][a-z0-9.-]*$/
 /** Endpoint hosts; a port would add a `:` that ends the field in the mount string. */
 const ENDPOINT = /^[A-Za-z0-9.-]+$/
+
+/** Full queue resource ids; capture groups are the cluster and queue names. */
+export const QUEUE_ID = /^\/subscriptions\/.+\/clusters\/([^/]+)\/queues\/([^/]+)$/
 
 /** Resource-option fields a CLI failure may blame. */
 export const RESOURCE_FAILURE = /machine|spec|queue|quota|gpu|机型|规格|队列|配额/i
@@ -44,8 +47,17 @@ export function mountPath(key: string, value: string): string {
   return check(MOUNT_PATH, key, value, 'must be an absolute path of letters, digits, ".", "_", "-", and "/"')
 }
 
+/** Strip leading and trailing `/` from a volume directory and reject anything else outside the grammar; `""` is the volume root. */
 function subpath(key: string, value: string): string {
-  return check(SUBPATH, key, value, 'must be a relative path of letters, digits, ".", "_", "-", and "/" without ".."')
+  const trimmed = value.trim().replace(/^\/+|\/+$/g, '')
+  check(SUBPATH, key, trimmed, 'must be a directory of letters, digits, ".", "_", "-", and "/" without "..", "//", or spaces')
+  return trimmed
+}
+
+/** The `--volume-mount` subdirectory for directories inside a volume: `/`-prefixed, or undefined for the volume root. */
+function volumeDir(...parts: string[]): string | undefined {
+  const joined = parts.filter(part => part !== '').join('/')
+  return joined === '' ? undefined : `/${joined}`
 }
 
 function nonEmpty(key: string, value: string): string {
@@ -65,30 +77,30 @@ function volume(value: ScoVolume): void {
 }
 
 /**
- * Reject a source whose locations could not form a valid `--volume-mount` or startup command.
+ * Reject a source whose locations could not form a valid `--volume-mount` or startup command, and normalize its volume directories.
  * @param source - candidate source.
- * @returns the unchanged source.
+ * @returns the source with volume directories stored without leading or trailing `/`; a data `path` naming the volume root is dropped.
  */
 export function validSource(source: ScoSource): ScoSource {
   volume(source.volume)
   switch (source.kind) {
-    case 'data':
-      if (source.path !== undefined) subpath('path', source.path)
+    case 'data': {
+      const { path, ...rest } = source
       mountPath('mountPath', source.mountPath)
-      return source
+      const dir = path === undefined ? '' : subpath('path', path)
+      return dir === '' ? rest : { ...rest, path: dir }
+    }
     case 'code':
-      subpath('root', source.root)
       mountPath('mountPath', source.mountPath)
       check(REF, 'defaultRef', source.defaultRef, 'must be one directory name of letters, digits, ".", "_", and "-"')
       if (source.setup !== undefined) nonEmpty('setup', source.setup)
-      return source
+      return { ...source, root: subpath('root', source.root) }
     case 'output':
-      subpath('root', source.root)
-      return source
+      return { ...source, root: subpath('root', source.root) }
   }
 }
 
-/** Build one `--volume-mount` value. */
+/** Build one `--volume-mount` value; `subdir` comes from {@link volumeDir}. */
 function mount(target: ScoVolume, path: string, subdir: string | undefined): string {
   switch (target.type) {
     case 'afs': return `PV_AFS:${target.id}:${path}${subdir === undefined ? '' : `:${subdir}`}`
@@ -135,14 +147,14 @@ export function resolveSubmission(request: SubmitScoJobRequest, context: Resolve
     mounts.set(path, value)
   }
   for (const source of data.map(item => lookup(context, 'data', item))) {
-    add(source.mountPath, mount(source.volume, source.mountPath, source.path))
+    add(source.mountPath, mount(source.volume, source.mountPath, volumeDir(subpath('path', source.path ?? ''))))
   }
   const steps: string[] = []
   let code: ScoResolvedSubmission['code']
   if (codeName !== undefined) {
     const source = lookup(context, 'code', codeName)
     const selected = check(REF, 'ref', ref ?? source.defaultRef, 'must be one directory name of letters, digits, ".", "_", and "-"')
-    add(source.mountPath, mount(source.volume, source.mountPath, `${source.root}/${selected}`))
+    add(source.mountPath, mount(source.volume, source.mountPath, volumeDir(subpath('root', source.root), selected)))
     steps.push(`cd ${source.mountPath}`)
     if (source.setup !== undefined) steps.push(source.setup)
     code = { name: codeName, ref: selected }
@@ -151,7 +163,7 @@ export function resolveSubmission(request: SubmitScoJobRequest, context: Resolve
   }
   if (outputName !== undefined) {
     const source = lookup(context, 'output', outputName)
-    add(context.outputMountPath, mount(source.volume, context.outputMountPath, `${source.root}/${name}`))
+    add(context.outputMountPath, mount(source.volume, context.outputMountPath, volumeDir(subpath('root', source.root), name)))
   }
   nonEmpty('command', command)
   steps.push(extraArgs === undefined ? command : `${command} ${extraArgs}`)
@@ -187,7 +199,7 @@ export function queueIds(listing: JsonValue): ScoQueueOption[] {
   const owned = new Set<string>()
   const visit = (value: JsonValue, owner?: JsonValue): void => {
     if (typeof value === 'string') {
-      const match = /^\/subscriptions\/.+\/clusters\/([^/]+)\/queues\/([^/]+)$/.exec(value)
+      const match = QUEUE_ID.exec(value)
       if (match === null || owned.has(value) || (found.has(value) && owner === undefined)) return
       const [cluster, queue] = match.slice(1) as [string, string]
       found.set(value, { id: value, cluster, queue, detail: owner ?? { id: value } })

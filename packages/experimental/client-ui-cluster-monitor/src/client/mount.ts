@@ -7,6 +7,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { ClusterWatchId, ClusterWatchRequest } from '@deepseek-ai/dsh-experimental-cluster-monitor/types'
 import type {} from '@deepseek-ai/dsh-experimental-cluster-monitor/remote'
+import type { ScoDefaults } from '@deepseek-ai/dsh-experimental-sco/types'
 import type { ScoSourceSaveRequest } from '@deepseek-ai/dsh-experimental-sco-submit/types'
 import type {} from '@deepseek-ai/dsh-experimental-sco-submit/remote'
 import type { RemoteResult, TypertRemoteContribution } from '@deepseek-ai/dsh-typert-protocol'
@@ -70,6 +71,7 @@ function registerConfigUi(ctx: Context): void {
     hooks: { overview: overview.store },
     saveSource: async (request: ScoSourceSaveRequest) => outcome(await ctx.remote.clusterConfig.saveSource(request)),
     deleteSource: async (name: string) => outcome(await ctx.remote.clusterConfig.deleteSource(name)),
+    saveDefaults: async (defaults: ScoDefaults) => outcome(await ctx.remote.clusterConfig.saveDefaults(defaults)),
     refreshOptions: async () => outcome(await ctx.remote.clusterConfig.refreshOptions()),
     loadVolumes: async () => {
       const result = await ctx.remote.clusterConfig.volumes()

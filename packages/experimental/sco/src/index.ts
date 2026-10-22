@@ -11,7 +11,7 @@ import { createArgv, jobName, listArgv, logsArgv, resourceName } from './argv.ts
 import { AFS_VOLUME_RESOURCE, parseResourcePage, parseVolumes } from './volumes.ts'
 import type {
   CreateScoJobRequest, ListScoJobsRequest, ScoAfsVolume, ReadScoJobLogsRequest, ScoJobCreated, ScoJobCreation, ScoJobLogs, ScoJobStop,
-  ScoWorkspaceRequest,
+  ScoDefaults, ScoWorkspaceRequest,
 } from './types.ts'
 
 export type * from './types.ts'
@@ -85,6 +85,7 @@ export class ScoGateway extends Service {
   })
 
   private readonly config: ResolvedConfig
+  private overrides: ScoDefaults = {}
   private readonly lifetime = new AbortController()
   private readonly cwd = homedir()
 
@@ -159,7 +160,7 @@ export class ScoGateway extends Service {
    * A real creation emits `sco/job-created` after the CLI succeeds.
    */
   async createJob(request: CreateScoJobRequest, signal?: AbortSignal): Promise<ScoJobCreation> {
-    const argv = [...createArgv(request, request.queueId ?? this.config.queueId), ...this.workspaceArgv(request)]
+    const argv = [...createArgv(request, request.queueId ?? this.queueId), ...this.workspaceArgv(request)]
     if (request.dryRun === true) return { kind: 'dry-run', job: await this.json(JOBS, argv, signal) }
     const result = await this.run(JOBS, argv, signal)
     const workspace = this.workspaceOf(request)
@@ -246,10 +247,10 @@ export class ScoGateway extends Service {
   /**
    * Resolve the workspace an operation targets on the command line.
    * @param request - optional per-request workspace.
-   * @returns the request workspace, else the configured default; undefined defers to the sco profile.
+   * @returns the request workspace, else the runtime default, else the configured default; undefined defers to the sco profile.
    */
   workspaceOf(request: ScoWorkspaceRequest): string | undefined {
-    const workspace = request.workspace ?? this.config.workspace
+    const workspace = request.workspace ?? this.overrides.workspace ?? this.config.workspace
     if (workspace !== undefined && workspace.trim().length === 0) throw new Error('sco: workspace must not be empty')
     return workspace
   }
@@ -259,9 +260,27 @@ export class ScoGateway extends Service {
     return this.config.profile
   }
 
-  /** The configured default queue resource id, or undefined when the sco profile supplies it. */
+  /** The runtime default queue resource id, else the configured one, or undefined when the sco profile supplies it. */
   get queueId(): string | undefined {
-    return this.config.queueId
+    return this.overrides.queueId ?? this.config.queueId
+  }
+
+  /** The workspace and queue from the gateway config, without runtime defaults. */
+  get configuredDefaults(): ScoDefaults {
+    const { workspace, queueId } = this.config
+    return { ...workspace === undefined ? {} : { workspace }, ...queueId === undefined ? {} : { queueId } }
+  }
+
+  /**
+   * Replace the runtime defaults, which take precedence over the gateway config until replaced again.
+   * @param defaults - workspace and queue; an absent field falls back to the config, then the sco profile.
+   */
+  setDefaults(defaults: ScoDefaults): void {
+    for (const key of ['workspace', 'queueId'] as const) {
+      const value = defaults[key]
+      if (value !== undefined && value.trim().length === 0) throw new Error(`sco: default ${key} must not be empty`)
+    }
+    this.overrides = { ...defaults }
   }
 
   private workspaceArgv(request: ScoWorkspaceRequest): string[] {

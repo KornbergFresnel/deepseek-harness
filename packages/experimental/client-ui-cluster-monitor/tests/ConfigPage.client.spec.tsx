@@ -21,9 +21,10 @@ const data: ScoSource = { kind: 'data', volume: { type: 'aoss', bucket: 'b', end
 const output: ScoSource = { kind: 'output', volume: { type: 'afs', id: 'vol-b' }, root: 'runs' }
 
 const overview: ScoConfigOverview = {
-  profile: 'team', workspace: 'ws', outputMountPath: '/workspace/output',
+  profile: 'team', workspace: 'ws', configured: { workspace: 'ws' }, saved: {}, outputMountPath: '/workspace/output',
   sources: [{ name: 'rlh', source: code }, { name: 'clips', source: data }, { name: 'runs', source: output },
     { name: 'lib', source: { kind: 'code', volume: { type: 'afs', id: 'vol-a' }, root: 'lib', mountPath: '/lib', defaultRef: 'v1' } },
+    { name: 'motion', source: { kind: 'data', volume: { type: 'afs', id: 'vol-a' }, path: 'motion/v1', mountPath: '/motion' } },
   ],
   templates: [
     { name: 'wbt', template: { description: 'tracking', image: 'img:1', code: 'rlh', ref: 'dev', data: ['clips'], output: 'runs', command: 'train', podCount: 2, gpuCount: 8 } },
@@ -50,9 +51,12 @@ function fixture(initial: Mirror<ScoConfigOverview>) {
   const saveSource = vi.fn(async () => null as string | null)
   const deleteSource = vi.fn(async () => null as string | null)
   const refreshOptions = vi.fn(async () => null as string | null)
+  const saveDefaults = vi.fn(async () => null as string | null)
   const loadVolumes = vi.fn(async (): Promise<Loaded<ScoAfsVolume[]>> => ({ ok: true, value: volumes }))
-  const props = { useOverview: bindSnapshotSelector(store), saveSource, deleteSource, refreshOptions, loadVolumes, t } as ConfigPageProps
-  return { ...render(<ConfigPage {...props} />), store, saveSource, deleteSource, refreshOptions, loadVolumes }
+  const props = {
+    useOverview: bindSnapshotSelector(store), saveSource, deleteSource, refreshOptions, saveDefaults, loadVolumes, t,
+  } as ConfigPageProps
+  return { ...render(<ConfigPage {...props} />), store, saveSource, deleteSource, refreshOptions, saveDefaults, loadVolumes }
 }
 
 const section = (title: string) => screen.getByRole('region', { name: title })
@@ -60,16 +64,46 @@ const section = (title: string) => screen.getByRole('region', { name: title })
 it('shows loading and disconnected states, then gateway defaults with CLI fallbacks', () => {
   const b = fixture({ value: null, connected: false, error: null })
   expect(screen.getByText(zh['page.loading'])).toBeTruthy()
-  act(() => { b.store.set({ value: { outputMountPath: '/out', sources: [], templates: [] }, connected: false, error: 'lost' }) })
+  act(() => { b.store.set({ value: { configured: {}, saved: {}, outputMountPath: '/out', sources: [], templates: [] }, connected: false, error: 'lost' }) })
   expect(screen.getByText(zh['page.disconnected'])).toBeTruthy()
-  expect(within(section(zh['basics.title'])).getAllByText(zh['basics.cliDefault'])).toHaveLength(3)
+  const basics = section(zh['basics.title'])
+  expect(within(basics).getByText(zh['basics.cliDefault'])).toBeTruthy()
+  expect(within(basics).getByText('当前生效：工作空间 使用 sco 的默认值，队列 使用 sco 的默认值')).toBeTruthy()
+  expect(screen.getByLabelText<HTMLInputElement>(zh['basics.workspace']).placeholder).toBe('留空：使用 sco 的默认值')
   expect(screen.getByText(zh['sources.empty'])).toBeTruthy()
   expect(screen.getByText(zh['templates.empty'])).toBeTruthy()
   expect(screen.getByText(zh['options.noWorkspace'])).toBeTruthy()
   expect(within(section(zh['options.title'])).queryByRole('button')).toBeNull()
-  act(() => { b.store.set({ value: { workspace: 'ws', queueId: 'q1', outputMountPath: '/out', sources: [], templates: [] }, connected: true, error: null }) })
+  act(() => {
+    b.store.set({
+      value: { workspace: 'ws', queueId: 'q1', configured: { workspace: 'ws' }, saved: { queueId: 'q1' }, outputMountPath: '/out', sources: [], templates: [] },
+      connected: true, error: null,
+    })
+  })
   expect(screen.getByText(zh['options.empty'])).toBeTruthy()
-  expect(screen.getByText('q1')).toBeTruthy()
+  expect(screen.getByText('当前生效：工作空间 ws，队列 q1')).toBeTruthy()
+  expect(screen.getByLabelText<HTMLInputElement>(zh['basics.workspace']).placeholder).toBe('留空：ws')
+  const queue = screen.getByLabelText<HTMLInputElement>(zh['basics.queue'])
+  expect(queue.value).toBe('q1')
+  fireEvent.change(queue, { target: { value: 'q2' } })
+  expect(queue.value).toBe('q2')
+})
+
+it('saves the default workspace and a listed queue, keeps an unlisted saved queue, and reports a failure', async () => {
+  const b = fixture({ value: { ...overview, saved: { queueId: 'q-old' } }, connected: true, error: null })
+  const queue = screen.getByLabelText<HTMLSelectElement>(zh['basics.queue'])
+  expect(queue.value).toBe('q-old')
+  expect(within(queue).getByText('留空：使用 sco 的默认值')).toBeTruthy()
+  expect(within(queue).getByText('gpu（c1）')).toBeTruthy()
+  fireEvent.change(screen.getByLabelText(zh['basics.workspace']), { target: { value: 'ws-2' } })
+  fireEvent.change(queue, { target: { value: 'q1' } })
+  b.saveDefaults.mockResolvedValueOnce('bad queue')
+  fireEvent.click(screen.getByRole('button', { name: zh['basics.save'] }))
+  expect(screen.getByRole('button', { name: zh['basics.saving'] })).toBeTruthy()
+  await screen.findByText('操作失败：bad queue')
+  expect(b.saveDefaults).toHaveBeenCalledWith({ workspace: 'ws-2', queueId: 'q1' })
+  fireEvent.click(screen.getByRole('button', { name: zh['basics.save'] }))
+  await waitFor(() => { expect(screen.queryByText('操作失败：bad queue')).toBeNull() })
 })
 
 it('renders sources, templates, and cached queue options', () => {
@@ -79,6 +113,8 @@ it('renders sources, templates, and cached queue options', () => {
   expect(within(sources).getByText('b @ e.example')).toBeTruthy()
   expect(within(sources).getByText('motion clips')).toBeTruthy()
   expect(within(sources).getByText(zh['source.volumeRoot'])).toBeTruthy()
+  expect(within(sources).getByText('/motion/v1')).toBeTruthy()
+  expect(within(sources).getByText('/code/rlh')).toBeTruthy()
   const templates = section(zh['templates.title'])
   expect(within(templates).getByText('rlh @ dev')).toBeTruthy()
   expect(within(templates).getByText('2 个 Pod，每个 8 卡')).toBeTruthy()

@@ -2171,14 +2171,19 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         signature: 'workspaceOf(request: ScoWorkspaceRequest): string | undefined',
         description: 'Resolve the workspace an operation targets on the command line.',
         parameters: [{ name: 'request', description: 'optional per-request workspace.' }],
-        returns: 'the request workspace, else the configured default; undefined defers to the sco profile.',
+        returns: 'the request workspace, else the runtime default, else the configured default; undefined defers to the sco profile.',
+      },
+      {
+        signature: 'setDefaults(defaults: ScoDefaults): void',
+        description: 'Replace the runtime defaults, which take precedence over the gateway config until replaced again.',
+        parameters: [{ name: 'defaults', description: 'workspace and queue; an absent field falls back to the config, then the sco profile.' }],
       },
     ],
   },
   {
     key: 'scoSubmit',
     summary: 'Composes SSP jobs from named sources and templates and submits them through `ctx.sco`.',
-    description: 'Composes SSP jobs from named sources and templates and submits them through `ctx.sco`. Sources and resource options persist in the `sco_submit` storage domain; templates come from config. Nothing in the `clusterConfig` namespace enters a model request; the model reaches the same records through the SSP job tools.',
+    description: 'Composes SSP jobs from named sources and templates and submits them through `ctx.sco`. Sources, resource options, and the page\'s default workspace and queue persist in the `sco_submit` storage domain; templates come from config. Saved defaults are applied to `ctx.sco` at start and withdrawn on disposal. Nothing in the `clusterConfig` namespace enters a model request; the model reaches the same records through the SSP job tools.',
     methods: [
       {
         signature: 'async sources(): Promise<Record<string, ScoSource>>',
@@ -2248,6 +2253,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Remove a source from the configuration page.',
         parameters: [{ name: 'name', description: 'registered source name.' }],
         returns: 'after the source is deleted.',
+      },
+      {
+        signature: '@Remote async saveDefaults(defaults: ScoDefaults): Promise<void>',
+        description: 'Save the default workspace and queue for the current sco profile; they override the gateway config until changed.',
+        parameters: [{ name: 'defaults', description: 'workspace and full queue id; a blank or absent field falls back to the gateway config, then the sco profile.' }],
+        returns: 'after the defaults are stored and applied.',
       },
       {
         signature: '@Remote async refreshOptions(): Promise<void>',
@@ -7225,11 +7236,15 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ScoConfigOverview',
-    declaration: 'export type ScoConfigOverview = {\n    profile?: string;\n    workspace?: string;\n    queueId?: string;\n    outputMountPath: string;\n    sources: {\n        name: string;\n        source: ScoSource;\n    }[];\n    templates: {\n        name: string;\n        template: ScoJobTemplate;\n    }[];\n    options?: {\n        workspace: string;\n        fetchedAt: string;\n        queues: ScoQueueChoice[];\n    };\n};',
+    declaration: 'export type ScoConfigOverview = {\n    profile?: string;\n    workspace?: string;\n    queueId?: string;\n    configured: ScoDefaults;\n    saved: ScoDefaults;\n    outputMountPath: string;\n    sources: {\n        name: string;\n        source: ScoSource;\n    }[];\n    templates: {\n        name: string;\n        template: ScoJobTemplate;\n    }[];\n    options?: {\n        workspace: string;\n        fetchedAt: string;\n        queues: ScoQueueChoice[];\n    };\n};',
   },
   {
     name: 'ScoDataSource',
     declaration: 'export type ScoDataSource = {\n    kind: \'data\';\n    volume: ScoVolume;\n    path?: string;\n    mountPath: string;\n    description?: string;\n};',
+  },
+  {
+    name: 'ScoDefaults',
+    declaration: 'export type ScoDefaults = {\n    workspace?: string;\n    queueId?: string;\n};',
   },
   {
     name: 'ScoFramework',

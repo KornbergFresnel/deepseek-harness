@@ -1,6 +1,6 @@
 /** Source, template, option, submission, and `clusterConfig` Remote records; type aliases so tool results carry them as JSON values. */
 
-import type { CreateScoJobRequest, ScoFramework, ScoImageType, ScoPriority } from '@deepseek-ai/dsh-experimental-sco/types'
+import type { CreateScoJobRequest, ScoDefaults, ScoFramework, ScoImageType, ScoPriority } from '@deepseek-ai/dsh-experimental-sco/types'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 
 /** Cluster storage a source lives on. */
@@ -192,10 +192,14 @@ export type ScoQueueChoice = ScoQueueOption & {
 export type ScoConfigOverview = {
   /** sco profile from the gateway config; absent uses the CLI's active profile. */
   profile?: string
-  /** Default workspace from the gateway config; absent defers to the sco profile. */
+  /** Effective default workspace: the page setting, else the gateway config; absent defers to the sco profile. */
   workspace?: string
-  /** Default queue from the gateway config; absent defers to the sco profile. */
+  /** Effective default queue: the page setting, else the gateway config; absent defers to the sco profile. */
   queueId?: string
+  /** Workspace and queue from the gateway config. */
+  configured: ScoDefaults
+  /** Workspace and queue saved from the configuration page for the current sco profile. */
+  saved: ScoDefaults
   /** Container path where every job mounts its output directory. */
   outputMountPath: string
   /** Registered sources sorted by name. */

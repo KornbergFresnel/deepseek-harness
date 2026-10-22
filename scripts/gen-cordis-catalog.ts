@@ -898,6 +898,7 @@ export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
   ScoConfigOverview: 'SSP submission records are owned by packages/experimental/sco-submit/src/types.ts',
   ScoSourceSaveRequest: 'SSP submission records are owned by packages/experimental/sco-submit/src/types.ts',
   ScoAfsVolume: 'sco gateway records are owned by packages/experimental/sco/src/types.ts',
+  ScoDefaults: 'sco gateway records are owned by packages/experimental/sco/src/types.ts',
   ClusterWatchId: 'cluster watch records are owned by packages/experimental/cluster-monitor/src/types.ts',
   ClusterWatchRequest: 'cluster watch records are owned by packages/experimental/cluster-monitor/src/types.ts',
   ClusterWatchRow: 'cluster watch records are owned by packages/experimental/cluster-monitor/src/types.ts',

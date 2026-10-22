@@ -178,9 +178,15 @@ async listDirectoryQuotas(volume: string, signal?: AbortSignal): Promise<JsonVal
 /**
  * Resolve the workspace an operation targets on the command line.
  * @param request - optional per-request workspace.
- * @returns the request workspace, else the configured default; undefined defers to the sco profile.
+ * @returns the request workspace, else the runtime default, else the configured default; undefined defers to the sco profile.
  */
 workspaceOf(request: ScoWorkspaceRequest): string | undefined
+
+/**
+ * Replace the runtime defaults, which take precedence over the gateway config until replaced again.
+ * @param defaults - workspace and queue; an absent field falls back to the config, then the sco profile.
+ */
+setDefaults(defaults: ScoDefaults): void
 ```
 
 Source: [`packages/experimental/sco/src/index.ts`](../../packages/experimental/sco/src/index.ts)
@@ -189,7 +195,7 @@ Source: [`packages/experimental/sco/src/index.ts`](../../packages/experimental/s
 
 ### `ctx.scoSubmit` — `ScoSubmit`
 
-Composes SSP jobs from named sources and templates and submits them through `ctx.sco`. Sources and resource options persist in the `sco_submit` storage domain; templates come from config. Nothing in the `clusterConfig` namespace enters a model request; the model reaches the same records through the SSP job tools.
+Composes SSP jobs from named sources and templates and submits them through `ctx.sco`. Sources, resource options, and the page's default workspace and queue persist in the `sco_submit` storage domain; templates come from config. Saved defaults are applied to `ctx.sco` at start and withdrawn on disposal. Nothing in the `clusterConfig` namespace enters a model request; the model reaches the same records through the SSP job tools.
 
 ```ts cordis-catalog
 /**
@@ -275,6 +281,13 @@ async submit(request: SubmitScoJobRequest, signal?: AbortSignal): Promise<ScoSub
  * @returns after the source is deleted.
  */
 @Remote async deleteSource(name: string): Promise<void>
+
+/**
+ * Save the default workspace and queue for the current sco profile; they override the gateway config until changed.
+ * @param defaults - workspace and full queue id; a blank or absent field falls back to the gateway config, then the sco profile.
+ * @returns after the defaults are stored and applied.
+ */
+@Remote async saveDefaults(defaults: ScoDefaults): Promise<void>
 
 /**
  * Query the queues and machine types of the default workspace again and cache them.

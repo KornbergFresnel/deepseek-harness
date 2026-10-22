@@ -35,7 +35,7 @@ function isInjected(value: object): value is ClusterPageInjected {
 }
 
 function isConfigInjected(value: object): value is ConfigPageInjected {
-  return 'saveSource' in value && 'deleteSource' in value && 'refreshOptions' in value && 'loadVolumes' in value && 'hooks' in value
+  return 'saveSource' in value && 'deleteSource' in value && 'refreshOptions' in value && 'saveDefaults' in value && 'loadVolumes' in value && 'hooks' in value
 }
 
 async function fixture(fail = false) {
@@ -53,6 +53,7 @@ async function fixture(fail = false) {
   ctx.provide('remote.cluster', cluster)
   const clusterConfig = {
     saveSource: vi.fn(async () => ok), deleteSource: vi.fn(async () => ok), refreshOptions: vi.fn(async () => ok),
+    saveDefaults: vi.fn(async () => ok),
     volumes: vi.fn(async (): Promise<unknown> => ({ ok: true, value: [{ id: 'vol-a' }] })),
   }
   ctx.provide('remote.clusterConfig', clusterConfig)
@@ -128,6 +129,8 @@ it('registers the localized configuration page and sidebar entry, maps Remote re
     expect(await actions.saveSource(request)).toBeNull()
     expect(b.clusterConfig.saveSource).toHaveBeenCalledWith(request)
     expect(await actions.refreshOptions()).toBeNull()
+    expect(await actions.saveDefaults({ workspace: 'ws' })).toBeNull()
+    expect(b.clusterConfig.saveDefaults).toHaveBeenCalledWith({ workspace: 'ws' })
     b.clusterConfig.deleteSource.mockResolvedValueOnce({ ok: false, error: new RemoteError('gateway/internal', 'in use', {}) } as never)
     expect(await actions.deleteSource('rlh')).toBe('in use')
     expect(b.clusterConfig.deleteSource).toHaveBeenCalledWith('rlh')

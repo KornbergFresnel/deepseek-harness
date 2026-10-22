@@ -20,6 +20,14 @@ export type ScoWorkspaceRequest = {
   workspace?: string
 }
 
+/** Default workspace and queue; an absent field leaves the next default in effect. */
+export type ScoDefaults = {
+  /** SSP workspace name. */
+  workspace?: string
+  /** Full queue resource id. */
+  queueId?: string
+}
+
 /** One `--filter` term; several terms combine with AND. */
 export interface ScoJobFilter {
   /** Filtered job field. */

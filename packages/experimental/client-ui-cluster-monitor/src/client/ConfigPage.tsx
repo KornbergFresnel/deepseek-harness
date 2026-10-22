@@ -3,7 +3,7 @@ import { useState, type FormEvent, type ReactNode } from 'react'
 import { Button, IconEditOutlineRegular, IconPlusOutlineRegular, IconRefreshOutlineRegular, IconTrashOutlineRegular, Input, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { HostObservable, InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
-import type { ScoAfsVolume } from '@deepseek-ai/dsh-experimental-sco/types'
+import type { ScoAfsVolume, ScoDefaults } from '@deepseek-ai/dsh-experimental-sco/types'
 import type {
   ScoConfigOverview, ScoJobTemplate, ScoSource, ScoSourceSaveRequest,
 } from '@deepseek-ai/dsh-experimental-sco-submit/types'
@@ -20,6 +20,8 @@ export interface ConfigPageInjected {
   readonly saveSource: (request: ScoSourceSaveRequest) => Promise<string | null>
   /** Remove a source; resolves to a failure message or null. */
   readonly deleteSource: (name: string) => Promise<string | null>
+  /** Save the default workspace and queue; resolves to a failure message or null. */
+  readonly saveDefaults: (defaults: ScoDefaults) => Promise<string | null>
   /** Query the default workspace's queues again; resolves to a failure message or null. */
   readonly refreshOptions: () => Promise<string | null>
   /** List the AFS volumes the sco credentials can see. */
@@ -128,18 +130,23 @@ function volumeText(source: ScoSource): string {
   return source.volume.type === 'afs' ? source.volume.id : `${source.volume.bucket} @ ${source.volume.endpoint}`
 }
 
+/** Volume directories are stored without a leading `/`; show them the way `--volume-mount` names them. */
+function dir(value: string): string {
+  return `/${value}`
+}
+
 function sourceFacts(source: ScoSource, t: Translate): [string, string][] {
   const facts: [string, string][] = [[t('source.volume'), volumeText(source)]]
   switch (source.kind) {
     case 'data':
-      facts.push([t('source.path'), source.path ?? t('source.volumeRoot')], [t('source.mountPath'), source.mountPath])
+      facts.push([t('source.path'), source.path === undefined ? t('source.volumeRoot') : dir(source.path)], [t('source.mountPath'), source.mountPath])
       break
     case 'code':
-      facts.push([t('source.root'), source.root], [t('source.mountPath'), source.mountPath], [t('source.defaultRef'), source.defaultRef])
+      facts.push([t('source.root'), dir(source.root)], [t('source.mountPath'), source.mountPath], [t('source.defaultRef'), source.defaultRef])
       if (source.setup !== undefined) facts.push([t('source.setup'), source.setup])
       break
     case 'output':
-      facts.push([t('source.root'), source.root])
+      facts.push([t('source.root'), dir(source.root)])
       break
   }
   return facts
@@ -287,6 +294,61 @@ function SourcesSection({ overview, props, volumes }: { overview: ScoConfigOverv
   )
 }
 
+function DefaultsSection({ overview, save, t }: {
+  overview: ScoConfigOverview
+  save: (defaults: ScoDefaults) => Promise<string | null>
+  t: Translate
+}) {
+  const [workspace, setWorkspace] = useState(overview.saved.workspace ?? '')
+  const [queueId, setQueueId] = useState(overview.saved.queueId ?? '')
+  const [busy, setBusy] = useState(false)
+  const [failure, setFailure] = useState<string | null>(null)
+  const fallback = (value: string | undefined) => t('basics.fallback', { value: value ?? t('basics.cliDefault') })
+  const queues = overview.options?.queues ?? []
+  const submit = async (event: FormEvent) => {
+    event.preventDefault()
+    setBusy(true)
+    const message = await save({ workspace, queueId })
+    setBusy(false)
+    setFailure(message)
+  }
+  return (
+    <Section title={t('basics.title')} hint={t('basics.hint')}>
+      <Facts facts={[
+        [t('basics.profile'), overview.profile ?? t('basics.cliDefault')],
+        [t('basics.outputMountPath'), overview.outputMountPath],
+      ]} />
+      <form className={css.form} onSubmit={(event) => { void submit(event) }}>
+        <Field label={t('basics.workspace')}>
+          <Input value={workspace} aria-label={t('basics.workspace')} placeholder={fallback(overview.configured.workspace)}
+            onChange={(event) => { setWorkspace(event.target.value) }} />
+        </Field>
+        <Field label={t('basics.queue')}>
+          {queues.length === 0
+            ? (
+              <Input value={queueId} aria-label={t('basics.queue')} placeholder={fallback(overview.configured.queueId)}
+                onChange={(event) => { setQueueId(event.target.value) }} />
+            )
+            : (
+              <select className={css.select} value={queueId} aria-label={t('basics.queue')} onChange={(event) => { setQueueId(event.target.value) }}>
+                <option value="">{fallback(overview.configured.queueId)}</option>
+                {queueId !== '' && !queues.some(queue => queue.id === queueId) && <option value={queueId}>{queueId}</option>}
+                {queues.map(queue => <option key={queue.id} value={queue.id}>{t('basics.queueOption', { queue: queue.queue, cluster: queue.cluster })}</option>)}
+              </select>
+            )}
+        </Field>
+        <p className={css.muted}>
+          {t('basics.effective', { workspace: overview.workspace ?? t('basics.cliDefault'), queue: overview.queueId ?? t('basics.cliDefault') })}
+        </p>
+        {failure !== null && <p className={css.notice} role="alert">{t('action.failed', { message: failure })}</p>}
+        <div className={css.formActions}>
+          <Button type="submit" variant="primary" size="sm" disabled={busy}>{busy ? t('basics.saving') : t('basics.save')}</Button>
+        </div>
+      </form>
+    </Section>
+  )
+}
+
 function templateFacts(template: ScoJobTemplate, t: Translate): [string, string][] {
   const facts: [string, string | undefined][] = [
     [t('template.image'), template.image],
@@ -418,14 +480,7 @@ export function ConfigPage(props: ConfigPageProps) {
           ? <p className={css.notice}>{t('page.loading')}</p>
           : (
             <>
-              <Section title={t('basics.title')}>
-                <Facts facts={[
-                  [t('basics.profile'), overview.profile ?? t('basics.cliDefault')],
-                  [t('basics.workspace'), overview.workspace ?? t('basics.cliDefault')],
-                  [t('basics.queue'), overview.queueId ?? t('basics.cliDefault')],
-                  [t('basics.outputMountPath'), overview.outputMountPath],
-                ]} />
-              </Section>
+              <DefaultsSection key={JSON.stringify(overview.saved)} overview={overview} save={props.saveDefaults} t={t} />
               <SourcesSection overview={overview} props={props} volumes={volumes} />
               <Section title={t('templates.title')} hint={t('templates.hint')}>
                 {overview.templates.length === 0

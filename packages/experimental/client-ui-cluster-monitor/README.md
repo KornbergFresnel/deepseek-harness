@@ -35,7 +35,7 @@ Mount it in the Host configuration beside `cluster-monitor` and `sco-submit`; th
 
 The page has a form that watches a job by name and optional workspace, the watch list with each job's phase and step, and a detail pane. The detail pane refreshes a job on demand, asks for a second press before it stops watching one, draws one line chart per metric with its step and value ranges, and shows the log tail and the last `describe` output. A lost connection keeps the last values on screen and says that it is reconnecting.
 
-The Cluster settings page shows the sco profile, default workspace and queue, and output mount path, which are set in the Host configuration and need a restart to change. Below them it lists the registered sources with add, edit, and remove; the add form offers the AFS volumes the sco credentials can see. It also shows the configured templates, the cached queues and machine types of the default workspace with a button that queries them again, and an on-demand table of AFS volumes with their usage. Removing a source asks for a second press, and failures appear under the action that caused them.
+The Cluster settings page shows the sco profile and output mount path, which are set in the Host configuration, and edits the default workspace and queue: a saved value applies at once and at every start for that profile and overrides the Host configuration, an empty field falls back to the configured value, and the queue is chosen from the cached queues when there are any. Below them it lists the registered sources with add, edit, and remove; the add form offers the AFS volumes the sco credentials can see. It also shows the configured templates, the cached queues and machine types of the default workspace with a button that queries them again, and an on-demand table of AFS volumes with their usage. Removing a source asks for a second press, and failures appear under the action that caused them.
 
 -----
 
@@ -83,7 +83,7 @@ No effect.
 <a id="known-limitations-and-deferred-work"></a>
 
 - **Fixed chart scale** — each chart spans its own value range on a linear axis, with no zoom, log scale, or overlaid runs.
-- **Read-only templates and defaults** — templates, the profile, workspace, queue, and output mount path are changed in the Host configuration, not on the page.
+- **Read-only templates and Host settings** — templates, the profile, and the output mount path are changed in the Host configuration, not on the page.
 
 <a id="dev-note"></a>
 ### Dev Note

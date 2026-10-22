@@ -1,7 +1,7 @@
 import { mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import ScoGateway from '@deepseek-ai/dsh-experimental-sco'
 import type { Config as ScoConfig } from '@deepseek-ai/dsh-experimental-sco'
@@ -53,8 +53,9 @@ async function boot(options: { sco?: ScoConfig; noWorkspace?: boolean; submit?: 
   await ctx.plugin(StorageJson, { root })
   await ctx.plugin(StorageDomain, { backend: 'json' })
   await ctx.plugin(ScoGateway, { command: fake.command, ...options.noWorkspace === true ? {} : { workspace: 'team-a' }, ...options.sco })
-  await ctx.plugin(ScoSubmit, { templates: TEMPLATES, ...options.submit })
-  return { ctx, fake, root }
+  const submit = ctx.plugin(ScoSubmit, { templates: TEMPLATES, ...options.submit })
+  await submit
+  return { ctx, fake, root, submit }
 }
 
 describe('source registry', () => {
@@ -88,7 +89,8 @@ describe('source registry', () => {
       [{ ...DATA, path: '../escape' }, 'path "../escape"'],
       [{ ...DATA, mountPath: 'relative' }, 'mountPath "relative"'],
       [{ ...DATA, mountPath: '/data/$(id)' }, 'mountPath "/data/$(id)"'],
-      [{ ...CODE, root: '/abs' }, 'root "/abs"'],
+      [{ ...CODE, root: 'a//b' }, 'root "a//b"'],
+      [{ ...CODE, root: 'with space/x' }, 'root "with space/x"'],
       [{ ...CODE, defaultRef: 'a/b' }, 'defaultRef "a/b"'],
       [{ ...CODE, setup: ' ' }, 'setup must not be empty'],
       [{ kind: 'output', volume: afs, root: 'a/../b' }, 'root "a/../b"'],
@@ -96,7 +98,12 @@ describe('source registry', () => {
       expect(() => validSource(source)).toThrow(text)
     }
     const aoss: ScoSource = { kind: 'data', volume: { type: 'aoss', bucket: 'motion', endpoint: 'oss.local' }, mountPath: '/data' }
-    expect(validSource(aoss)).toBe(aoss)
+    expect(validSource(aoss)).toEqual(aoss)
+    expect(validSource({ ...DATA, path: ' /datasets/lafan/ ' })).toEqual(DATA)
+    const { path: _path, ...whole } = DATA
+    expect(validSource({ ...DATA, path: '/' })).toEqual(whole)
+    expect(validSource({ ...CODE, root: '/code/rlh' })).toEqual(CODE)
+    expect(validSource({ kind: 'output', volume: afs, root: '/' })).toEqual({ kind: 'output', volume: afs, root: '' })
     const { setup: _setup, ...bare } = CODE
     expect(validSource(bare)).toMatchObject({ kind: 'code' })
   })
@@ -141,9 +148,9 @@ describe('submission expansion', () => {
         workspace: 'team-b',
         env: { WANDB_MODE: 'offline', SEED: '2' },
         volumeMounts: [
-          'PV_AFS:vol-data:/data/motion:datasets/lafan',
-          'PV_AFS:vol-code:/workspace/code:code/rlh/abc123',
-          'PV_AFS:vol-out:/outputs:outputs/wbt/job-wbt',
+          'PV_AFS:vol-data:/data/motion:/datasets/lafan',
+          'PV_AFS:vol-code:/workspace/code:/code/rlh/abc123',
+          'PV_AFS:vol-out:/outputs:/outputs/wbt/job-wbt',
         ],
         dryRun: true,
       },
@@ -160,7 +167,7 @@ describe('submission expansion', () => {
         name: 'job-x',
         image: 'img',
         args: 'cd /code && run',
-        volumeMounts: ['PV_AOSS:motion:/data/bucket:oss.local:npz', 'PV_AOSS:raw:/data/raw:oss.local', 'PV_AFS:vol-whole:/data/whole', 'PV_AFS:vol-code:/code:code/plain/v1'],
+        volumeMounts: ['PV_AOSS:motion:/data/bucket:oss.local:/npz', 'PV_AOSS:raw:/data/raw:oss.local', 'PV_AFS:vol-whole:/data/whole', 'PV_AFS:vol-code:/code:/code/plain/v1'],
       },
       code: { name: 'plain', ref: 'v1' },
       data: ['bucket', 'raw', 'whole'],
@@ -240,7 +247,7 @@ describe('resource options and submission', () => {
       { name: 'job-wbt', workspace: 'team-a', template: 'wbt-train', code: { name: 'rlh', ref: 'main' }, data: ['motion'], output: 'outputs' },
       { name: 'job-bare', workspace: 'team-a', data: [] },
     ])
-    expect((await fake.calls())[1]).toContain('--volume-mount=PV_AFS:vol-out:/outputs:outputs/wbt/job-wbt')
+    expect((await fake.calls())[1]).toContain('--volume-mount=PV_AFS:vol-out:/outputs:/outputs/wbt/job-wbt')
     expect((await ctx.scoSubmit.resolve({ name: 'job-wbt', template: 'wbt-train' })).request.args).toContain('cd /workspace/code')
   })
 
@@ -281,8 +288,8 @@ describe('clusterConfig Remote namespace', () => {
     const stream = ctx.scoSubmit.follow(abort.signal)[Symbol.asyncIterator]()
     const first = await stream.next()
     expect(first.value).toEqual({
-      profile: 'pjlab', workspace: 'team-a', queueId: '/queues/default', outputMountPath: '/outputs',
-      sources: [], templates: [{ name: 'wbt-train', template: TEMPLATES['wbt-train'] }],
+      profile: 'pjlab', workspace: 'team-a', queueId: '/queues/default', configured: { workspace: 'team-a', queueId: '/queues/default' }, saved: {},
+      outputMountPath: '/outputs', sources: [], templates: [{ name: 'wbt-train', template: TEMPLATES['wbt-train'] }],
     })
     const pending = stream.next()
     await ctx.scoSubmit.saveSource({ name: 'rlh', source: CODE })
@@ -304,12 +311,37 @@ describe('clusterConfig Remote namespace', () => {
     expect(await waiting).toEqual({ done: true, value: undefined })
   })
 
+  it('saves page defaults per profile, applies them at start, and withdraws them on disposal', async () => {
+    const queue = '/subscriptions/s/resourceGroups/r/regions/cn/clusters/c1/queues/gpu-a'
+    const first = await boot({ sco: { profile: 'pjlab' }, noWorkspace: true })
+    const abort = new AbortController()
+    const stream = first.ctx.scoSubmit.follow(abort.signal)[Symbol.asyncIterator]()
+    await stream.next()
+    await expect(first.ctx.scoSubmit.saveDefaults({ queueId: 'gpu-a' })).rejects.toThrow('queueId "gpu-a" must be a full queue resource id')
+    await first.ctx.scoSubmit.saveDefaults({ workspace: ' team-b ', queueId: queue })
+    expect((await stream.next()).value).toMatchObject({ workspace: 'team-b', queueId: queue, configured: {}, saved: { workspace: 'team-b', queueId: queue } })
+    abort.abort()
+    await first.ctx.fiber.dispose()
+
+    const second = await boot({ sco: { profile: 'pjlab' }, noWorkspace: true, root: first.root, fake: first.fake })
+    await vi.waitFor(() => { expect([second.ctx.sco.workspaceOf({}), second.ctx.sco.queueId]).toEqual(['team-b', queue]) })
+    await second.ctx.scoSubmit.saveDefaults({ workspace: '', queueId: ' ' })
+    expect(await second.ctx.scoSubmit.overview()).toMatchObject({ saved: {} })
+    expect(second.ctx.sco.workspaceOf({})).toBeUndefined()
+    await second.ctx.scoSubmit.saveDefaults({ workspace: 'team-c' })
+    const sco = second.ctx.sco
+    await second.submit.dispose()
+    expect(sco.workspaceOf({})).toBeUndefined()
+  })
+
   it('omits gateway defaults and options that are not configured', async () => {
     const { ctx } = await boot({ noWorkspace: true })
     const abort = new AbortController()
     abort.abort()
     expect(await ctx.scoSubmit.follow(abort.signal)[Symbol.asyncIterator]().next()).toEqual({ done: true, value: undefined })
-    expect(await ctx.scoSubmit.overview()).toEqual({ outputMountPath: '/outputs', sources: [], templates: [{ name: 'wbt-train', template: TEMPLATES['wbt-train'] }] })
+    expect(await ctx.scoSubmit.overview()).toEqual({
+      configured: {}, saved: {}, outputMountPath: '/outputs', sources: [], templates: [{ name: 'wbt-train', template: TEMPLATES['wbt-train'] }],
+    })
     expect(machineTypes([{ spec_code: 'a' }, { nested: { machine_type: 'b', other: 'c' } }, { spec_code: 'a' }, { spec_code: 1 }, null])).toEqual(['a', 'b'])
   })
 })

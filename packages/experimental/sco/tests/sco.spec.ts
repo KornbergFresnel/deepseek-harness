@@ -72,6 +72,21 @@ describe('SSP job operations through the sco CLI', () => {
     expect((await fake.calls())[0]).toEqual(['ssp', 'jobs', 'stream-logs', 'job-wbt', '--worker-name=job-wbt-worker-0', '--container-name=main'])
   })
 
+  it('lets runtime defaults override the configured workspace and queue until replaced', async () => {
+    const { ctx, fake } = await gateway({ workspace: 'team-a', queueId: '/queues/default' })
+    expect(ctx.sco.configuredDefaults).toEqual({ workspace: 'team-a', queueId: '/queues/default' })
+    ctx.sco.setDefaults({ workspace: 'team-b', queueId: '/queues/page' })
+    expect([ctx.sco.workspaceOf({}), ctx.sco.workspaceOf({ workspace: 'team-c' }), ctx.sco.queueId]).toEqual(['team-b', 'team-c', '/queues/page'])
+    await ctx.sco.createJob({ name: 'job-wbt', image: 'img', args: 'run', dryRun: true })
+    expect((await fake.calls())[0]).toEqual(expect.arrayContaining(['--queue-id=/queues/page', '--workspace-name=team-b']))
+    ctx.sco.setDefaults({ queueId: '/queues/page' })
+    expect(ctx.sco.workspaceOf({})).toBe('team-a')
+    expect(() => { ctx.sco.setDefaults({ workspace: ' ' }) }).toThrow('sco: default workspace must not be empty')
+    expect(ctx.sco.queueId).toBe('/queues/page')
+    ctx.sco.setDefaults({})
+    expect(ctx.sco.queueId).toBe('/queues/default')
+  })
+
   it('creates jobs from flags, returning the merged spec for a dry run and the CLI output otherwise', async () => {
     const { ctx, fake } = await gateway({ queueId: '/queues/default' })
     expect(ctx.sco.queueId).toBe('/queues/default')
@@ -174,6 +189,7 @@ describe('SSP job operations through the sco CLI', () => {
   it('stops paging SRM on a repeated page and fails on SRM output it cannot read', async () => {
     const { ctx, fake } = await gateway()
     await writeFile(join(fake.root, 'srm-repeat'), '')
+    expect(ctx.sco.configuredDefaults).toEqual({})
     expect((await ctx.sco.listVolumes()).map(volume => volume.name)).toEqual([undefined, undefined, undefined, undefined])
     expect((await fake.calls()).filter(argv => argv.includes('srm'))).toHaveLength(2)
     await writeFile(join(fake.root, 'srm.json'), JSON.stringify({ items: [] }))

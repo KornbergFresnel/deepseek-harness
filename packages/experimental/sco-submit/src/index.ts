@@ -6,11 +6,11 @@
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { z as zod } from 'zod'
-import type { ScoAfsVolume, ScoJobCreation } from '@deepseek-ai/dsh-experimental-sco'
+import type { ScoAfsVolume, ScoDefaults, ScoJobCreation } from '@deepseek-ai/dsh-experimental-sco'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import type { Domain } from '@deepseek-ai/dsh-storage-domain'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
-import { machineTypes, mentions, mountPath, queueIds, RESOURCE_FAILURE, resolveSubmission, sourceName, validSource } from './resolve.ts'
+import { machineTypes, mentions, mountPath, QUEUE_ID, queueIds, RESOURCE_FAILURE, resolveSubmission, sourceName, validSource } from './resolve.ts'
 import type {
   ScoConfigOverview, ScoJobSubmitted, ScoJobTemplate, ScoResolvedSubmission, ScoResourceOptions, ScoResourceOptionsRequest,
   ScoSource, ScoSourceSaveRequest, ScoSubmission, SubmitScoJobRequest,
@@ -72,12 +72,15 @@ const optionsSchema = zod.object({
   queues: zod.array(zod.object({ id: zod.string(), cluster: zod.string(), queue: zod.string(), detail: zod.json() })),
 })
 
+const defaultsSchema = zod.object({ workspace: zod.string().exactOptional(), queueId: zod.string().exactOptional() })
+
 const submitDomain = defineDomain({
   name: 'sco_submit',
   version: 1,
   tables: {
     sources: domainTable<string, ScoSource>(sourceSchema),
     resource_options: domainTable<string, ScoResourceOptions>(optionsSchema),
+    defaults: domainTable<string, ScoDefaults>(defaultsSchema),
   },
 })
 
@@ -111,7 +114,8 @@ function message(error: unknown): string {
 
 /**
  * Composes SSP jobs from named sources and templates and submits them through `ctx.sco`.
- * Sources and resource options persist in the `sco_submit` storage domain; templates come from config.
+ * Sources, resource options, and the page's default workspace and queue persist in the `sco_submit` storage domain; templates come
+ * from config. Saved defaults are applied to `ctx.sco` at start and withdrawn on disposal.
  * Nothing in the `clusterConfig` namespace enters a model request; the model reaches the same records through the SSP job tools.
  */
 export class ScoSubmit extends TypertRemoteService {
@@ -146,8 +150,13 @@ export class ScoSubmit extends TypertRemoteService {
     this.domain = ctx.storageDomain.open(submitDomain)
     ctx.effect(async () => {
       const domain = await this.domain
-      return () => domain.close()
-    }, 'sco-submit: open the source and resource-option domain; close it on disposal')
+      const saved = domain.table('defaults').get(this.defaultsKey())
+      if (saved !== undefined) ctx.sco.setDefaults(saved)
+      return async () => {
+        ctx.sco.setDefaults({})
+        await domain.close()
+      }
+    }, 'sco-submit: open the domain and apply saved defaults; withdraw them and close the domain on disposal')
   }
 
   /**
@@ -299,6 +308,8 @@ export class ScoSubmit extends TypertRemoteService {
       ...sco.profile === undefined ? {} : { profile: sco.profile },
       ...workspace === undefined ? {} : { workspace },
       ...sco.queueId === undefined ? {} : { queueId: sco.queueId },
+      configured: sco.configuredDefaults,
+      saved: domain.table('defaults').get(this.defaultsKey()) ?? {},
       outputMountPath: this.outputMountPath,
       sources: byName(domain.table('sources').entries()).map(([name, source]) => ({ name, source })),
       templates: byName(Object.entries(this.templates)).map(([name, template]) => ({ name, template })),
@@ -360,6 +371,25 @@ export class ScoSubmit extends TypertRemoteService {
   }
 
   /**
+   * Save the default workspace and queue for the current sco profile; they override the gateway config until changed.
+   * @param defaults - workspace and full queue id; a blank or absent field falls back to the gateway config, then the sco profile.
+   * @returns after the defaults are stored and applied.
+   */
+  @Remote
+  async saveDefaults(defaults: ScoDefaults): Promise<void> {
+    const workspace = defaults.workspace?.trim() ?? ''
+    const queueId = defaults.queueId?.trim() ?? ''
+    if (queueId !== '' && !QUEUE_ID.test(queueId)) {
+      throw new Error(`sco-submit: queueId "${queueId}" must be a full queue resource id (/subscriptions/…/clusters/<cluster>/queues/<queue>)`)
+    }
+    const next: ScoDefaults = { ...workspace === '' ? {} : { workspace }, ...queueId === '' ? {} : { queueId } }
+    const table = (await this.domain).table('defaults')
+    await (Object.keys(next).length === 0 ? table.delete(this.defaultsKey()) : table.put(this.defaultsKey(), next))
+    this.ctx.sco.setDefaults(next)
+    this.changed()
+  }
+
+  /**
    * Query the queues and machine types of the default workspace again and cache them.
    * @returns after the options are stored.
    */
@@ -379,6 +409,10 @@ export class ScoSubmit extends TypertRemoteService {
 
   private changed(): void {
     for (const listener of this.listeners) listener()
+  }
+
+  private defaultsKey(): string {
+    return this.ctx.sco.profile ?? ''
   }
 
   private optionsKey(workspace: string): string {
