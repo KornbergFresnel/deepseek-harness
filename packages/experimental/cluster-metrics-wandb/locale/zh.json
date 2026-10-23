@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "从 Weights & Biases 读取集群训练曲线",
+    "description": "从作业对应的 Weights & Biases run 读取集群任务的训练曲线。"
+  }
+}

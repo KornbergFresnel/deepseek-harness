@@ -52,8 +52,10 @@ describe('SSP job operations through the sco CLI', () => {
     await ctx.sco.listWorkers('job-wbt')
     await ctx.sco.readLogs('job-wbt')
     await ctx.sco.stopJobs(['job-wbt'])
-    await ctx.sco.createJob({ name: 'job-wbt', image: 'img', args: 'run' }, undefined, { sessionId: brandString<SessionId>('session-1') })
-    expect(created).toEqual([{ name: 'job-wbt', sessionId: 'session-1' }])
+    await ctx.sco.createJob({ name: 'job-wbt', image: 'img', args: 'run' }, undefined, {
+      sessionId: brandString<SessionId>('session-1'), description: 'Train the G1 tracking policy',
+    })
+    expect(created).toEqual([{ name: 'job-wbt', sessionId: 'session-1', description: 'Train the G1 tracking policy' }])
     expect(await fake.calls()).toEqual([
       ['ssp', 'jobs', 'list', '--format=json'],
       ['ssp', 'jobs', 'describe', 'job-wbt', '--format=json'],

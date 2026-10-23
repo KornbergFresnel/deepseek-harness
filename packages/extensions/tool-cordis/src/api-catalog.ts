@@ -667,8 +667,8 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: '@Remote async watch(request: ClusterWatchRequest): Promise<ClusterWatchRow>',
-        description: 'Start watching a job, or return the existing watch of the same job and workspace.',
-        parameters: [{ name: 'request', description: 'job name and optional workspace.' }],
+        description: 'Start watching a job, or return the existing watch of the same job and workspace. A Session named by the request attaches to an existing watch that has none.',
+        parameters: [{ name: 'request', description: 'job name, optional workspace, and optional Session.' }],
         returns: 'the watch row.',
       },
       {
@@ -682,6 +682,24 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Poll one job now, including a finished one, and wait for the result.',
         parameters: [{ name: 'watchId', description: 'watch id from a row.' }],
         returns: 'after the poll is stored.',
+      },
+      {
+        signature: '@Remote metricSources(): string[]',
+        description: 'List the registered metric source kinds.',
+        parameters: [],
+        returns: 'kinds in registration order, starting with `logs`.',
+      },
+      {
+        signature: '@Remote async configure(watchId: ClusterWatchId, changes: ClusterWatchChanges): Promise<ClusterWatchRow>',
+        description: 'Change a watch\'s description or metric source. A different source clears the curves and polls the job\'s logs again.',
+        parameters: [{ name: 'watchId', description: 'watch id from a row.' }, { name: 'changes', description: 'fields to change.' }],
+        returns: 'the updated row.',
+      },
+      {
+        signature: 'registerMetricSource(kind: string, provider: ClusterMetricProvider): () => void',
+        description: 'Register a metric source kind. Watches name it in `metrics.kind`; one that names a kind no plugin registers reports that on every poll.',
+        parameters: [{ name: 'kind', description: 'source kind; `logs` and every registered kind are taken.' }, { name: 'provider', description: 'option validation and the metric read.' }],
+        returns: 'disposer that unregisters the kind.',
       },
     ],
   },
@@ -2152,9 +2170,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the retained log text and whether it was truncated to the output limit.',
       },
       {
-        signature: 'async createJob(request: CreateScoJobRequest, signal?: AbortSignal): Promise<ScoJobCreation>',
+        signature: 'async createJob(request: CreateScoJobRequest, signal?: AbortSignal, origin: ScoCallOrigin = {}): Promise<ScoJobCreation>',
         description: 'Create a training job from flags, or validate it with `dryRun`. Creation is not idempotent: an existing name fails in the CLI.',
-        parameters: [{ name: 'request', description: 'job specification.' }, { name: 'signal', description: 'cancellation; a cancelled creation may still have been accepted remotely.' }],
+        parameters: [{ name: 'request', description: 'job specification.' }, { name: 'signal', description: 'cancellation; a cancelled creation may still have been accepted remotely.' }, { name: 'origin', description: 'Session that requested the creation and the job\'s description, copied into `sco/job-created`.' }],
         returns: 'the merged `TrainingJob` for a dry run, otherwise the created name and CLI output. A real creation emits `sco/job-created` after the CLI succeeds.',
       },
       {
@@ -2245,9 +2263,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'creation flags and the names they were composed from.',
       },
       {
-        signature: 'async submit(request: SubmitScoJobRequest, signal?: AbortSignal): Promise<ScoSubmission>',
+        signature: 'async submit(request: SubmitScoJobRequest, signal?: AbortSignal, origin: ScoCallOrigin = {}): Promise<ScoSubmission>',
         description: 'Expand and submit a job, or validate it with `dryRun`. A machine type absent from cached options fails before the CLI runs; a CLI failure that names a resource field refreshes the cached options before the error propagates.',
-        parameters: [{ name: 'request', description: 'submission.' }, { name: 'signal', description: 'cancellation; a cancelled creation may still have been accepted remotely.' }],
+        parameters: [{ name: 'request', description: 'submission.' }, { name: 'signal', description: 'cancellation; a cancelled creation may still have been accepted remotely.' }, { name: 'origin', description: 'Session that requested the submission, passed to `createJob`.' }],
         returns: 'the merged `TrainingJob` for a dry run, otherwise the created name and CLI output, each with the flags used.',
       },
       {
@@ -2257,7 +2275,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'gateway defaults, sources, templates, and the options cached for the default workspace.',
       },
       {
-        signature: '@Remote({ mode: \'stream\' }) async *follow(signal: AbortSignal): AsyncIterable<ScoConfigOverview>',
+        signature: '@Remote({ mode: \'stream\' }) follow(signal: AbortSignal): AsyncIterable<ScoConfigOverview>',
         description: 'Follow the configuration page state: the overview now and after each source or option change.',
         parameters: [{ name: 'signal', description: 'stream lifetime.' }],
         returns: 'complete overviews.',
@@ -2291,6 +2309,42 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'List the AFS volumes the sco credentials can see, for choosing where a source lives.',
         parameters: [],
         returns: 'volumes with capacity and used percentage.',
+      },
+      {
+        signature: 'async configs(): Promise<Record<string, ScoSavedConfig>>',
+        description: 'List saved workload configurations.',
+        parameters: [],
+        returns: 'configurations by name.',
+      },
+      {
+        signature: '@Remote async saveConfig(request: ScoConfigSaveRequest): Promise<void>',
+        description: 'Save a workload configuration for later forms to load.',
+        parameters: [{ name: 'request', description: 'name, kind, settings, and whether to replace a saved configuration of the same name.' }],
+        returns: 'after the configuration is stored.',
+      },
+      {
+        signature: '@Remote async deleteConfig(name: string): Promise<void>',
+        description: 'Delete a saved workload configuration.',
+        parameters: [{ name: 'name', description: 'saved configuration name.' }],
+        returns: 'after the configuration is deleted.',
+      },
+      {
+        signature: 'async askForm(request: Omit<ScoConfigForm, \'openedAt\'>, signal: AbortSignal): Promise<ScoConfigFormOutcome>',
+        description: 'Open a configuration form in the chat row of a tool call and wait until the user confirms or cancels it.',
+        parameters: [{ name: 'request', description: 'tool call, Session, kind, proposed values, and an optional saved configuration to suggest.' }, { name: 'signal', description: 'the tool call\'s lifetime; aborting closes the form and rejects with the abort reason.' }],
+        returns: 'the confirmed values, with the configuration loaded and the name saved under, or a cancellation.',
+      },
+      {
+        signature: '@Remote({ mode: \'stream\' }) followForms(signal: AbortSignal): AsyncIterable<ScoConfigForm[]>',
+        description: 'Follow the open configuration forms: the list now and after each form opens or closes.',
+        parameters: [{ name: 'signal', description: 'stream lifetime.' }],
+        returns: 'complete form lists in opening order.',
+      },
+      {
+        signature: '@Remote async answerForm(callId: ToolCallId, answer: ScoConfigFormAnswer): Promise<void>',
+        description: 'Answer an open configuration form. A save request stores the confirmed values first; a failed save leaves the form open.',
+        parameters: [{ name: 'callId', description: 'tool call that opened the form.' }, { name: 'answer', description: 'confirmed values with the optional configuration loaded and save name, or a cancellation.' }],
+        returns: 'after the form closes.',
       },
     ],
   },
@@ -5263,12 +5317,36 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type ClusterJobPhase = \'pending\' | \'running\' | \'succeeded\' | \'failed\' | \'stopped\' | \'unknown\';',
   },
   {
+    name: 'ClusterMetricOptions',
+    declaration: 'export type ClusterMetricOptions = Readonly<Record<string, JsonValue>>;',
+  },
+  {
     name: 'ClusterMetricPoint',
     declaration: 'export interface ClusterMetricPoint {\n    readonly step: number;\n    readonly value: number;\n}',
   },
   {
+    name: 'ClusterMetricProvider',
+    declaration: 'export interface ClusterMetricProvider {\n    validate(options: ClusterMetricOptions): ClusterMetricOptions;\n    read(input: ClusterMetricReadInput, signal: AbortSignal): Promise<readonly ClusterMetricRecord[]>;\n}',
+  },
+  {
+    name: 'ClusterMetricReadInput',
+    declaration: 'export interface ClusterMetricReadInput {\n    readonly name: string;\n    readonly workspace?: string;\n    readonly options: ClusterMetricOptions;\n    readonly logs: string;\n}',
+  },
+  {
+    name: 'ClusterMetricRecord',
+    declaration: 'export interface ClusterMetricRecord {\n    readonly step: number;\n    readonly values: Readonly<Record<string, number>>;\n}',
+  },
+  {
     name: 'ClusterMetricSeries',
     declaration: 'export interface ClusterMetricSeries {\n    readonly name: string;\n    readonly points: readonly ClusterMetricPoint[];\n}',
+  },
+  {
+    name: 'ClusterMetricSource',
+    declaration: 'export interface ClusterMetricSource {\n    readonly kind: string;\n    readonly options?: Readonly<Record<string, JsonValue>>;\n}',
+  },
+  {
+    name: 'ClusterWatchChanges',
+    declaration: 'export interface ClusterWatchChanges {\n    readonly description?: string;\n    readonly metrics?: ClusterMetricSource | null;\n}',
   },
   {
     name: 'ClusterWatchId',
@@ -5280,11 +5358,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ClusterWatchRequest',
-    declaration: 'export interface ClusterWatchRequest {\n    readonly name: string;\n    readonly workspace?: string;\n}',
+    declaration: 'export interface ClusterWatchRequest {\n    readonly name: string;\n    readonly workspace?: string;\n    readonly sessionId?: SessionId;\n    readonly description?: string;\n    readonly metrics?: ClusterMetricSource;\n}',
   },
   {
     name: 'ClusterWatchRow',
-    declaration: 'export interface ClusterWatchRow {\n    readonly id: ClusterWatchId;\n    readonly name: string;\n    readonly workspace?: string;\n    readonly origin: ClusterWatchOrigin;\n    readonly phase: ClusterJobPhase;\n    readonly rawState: string | null;\n    readonly watchedAt: string;\n    readonly checkedAt?: string;\n    readonly createdAt?: string;\n    readonly startedAt?: string;\n    readonly finishedAt?: string;\n    readonly error?: string;\n    readonly step?: number;\n    readonly latest: Readonly<Record<string, number>>;\n}',
+    declaration: 'export interface ClusterWatchRow {\n    readonly id: ClusterWatchId;\n    readonly name: string;\n    readonly workspace?: string;\n    readonly sessionId?: SessionId;\n    readonly origin: ClusterWatchOrigin;\n    readonly description?: string;\n    readonly displayName?: string;\n    readonly metrics: ClusterMetricSource;\n    readonly metricsDefault: boolean;\n    readonly metricsError?: string;\n    readonly phase: ClusterJobPhase;\n    readonly rawState: string | null;\n    readonly watchedAt: string;\n    readonly checkedAt?: string;\n    readonly createdAt?: string;\n    readonly startedAt?: string;\n    readonly finishedAt?: string;\n    readonly error?: string;\n    readonly step?: number;\n    readonly latest: Readonly<Record<string, number>>;\n}',
   },
   {
     name: 'CollectedOutput',
@@ -7267,12 +7345,32 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type ScoAfsVolume = {\n    id: string;\n    name?: string;\n    type?: string;\n    totalCapacity?: string;\n    usedCapacity?: string;\n    usedPercent?: number;\n    region?: string;\n    zone?: string;\n    endTime?: string;\n    state?: string;\n};',
   },
   {
+    name: 'ScoCallOrigin',
+    declaration: 'export interface ScoCallOrigin {\n    sessionId?: SessionId;\n    description?: string;\n}',
+  },
+  {
     name: 'ScoCodeSource',
     declaration: 'export type ScoCodeSource = {\n    kind: \'code\';\n    volume: ScoVolume;\n    root: string;\n    mountPath: string;\n    defaultRef: string;\n    setup?: string;\n    description?: string;\n};',
   },
   {
+    name: 'ScoConfigForm',
+    declaration: 'export type ScoConfigForm = {\n    callId: ToolCallId;\n    sessionId?: SessionId;\n    kind: ScoWorkloadKind;\n    title?: string;\n    initial: ScoWorkloadSpec;\n    suggested?: string;\n    openedAt: string;\n};',
+  },
+  {
+    name: 'ScoConfigFormAnswer',
+    declaration: 'export type ScoConfigFormAnswer = {\n    kind: \'confirmed\';\n    spec: ScoWorkloadSpec;\n    loaded?: string;\n    save?: {\n        name: string;\n        description?: string;\n    };\n} | {\n    kind: \'cancelled\';\n};',
+  },
+  {
+    name: 'ScoConfigFormOutcome',
+    declaration: 'export type ScoConfigFormOutcome = {\n    kind: \'confirmed\';\n    workload: ScoWorkloadKind;\n    spec: ScoWorkloadSpec;\n    loaded?: string;\n    savedAs?: string;\n} | {\n    kind: \'cancelled\';\n};',
+  },
+  {
     name: 'ScoConfigOverview',
-    declaration: 'export type ScoConfigOverview = {\n    profile?: string;\n    workspace?: string;\n    queueId?: string;\n    configured: ScoDefaults;\n    saved: ScoDefaults;\n    outputMountPath: string;\n    sources: {\n        name: string;\n        source: ScoSource;\n    }[];\n    templates: {\n        name: string;\n        template: ScoJobTemplate;\n    }[];\n    options?: {\n        workspace: string;\n        fetchedAt: string;\n        queues: ScoQueueChoice[];\n    };\n};',
+    declaration: 'export type ScoConfigOverview = {\n    profile?: string;\n    workspace?: string;\n    queueId?: string;\n    configured: ScoDefaults;\n    saved: ScoDefaults;\n    outputMountPath: string;\n    sources: {\n        name: string;\n        source: ScoSource;\n    }[];\n    templates: {\n        name: string;\n        template: ScoJobTemplate;\n    }[];\n    options?: {\n        workspace: string;\n        fetchedAt: string;\n        queues: ScoQueueChoice[];\n    };\n    configs: {\n        name: string;\n        config: ScoSavedConfig;\n    }[];\n};',
+  },
+  {
+    name: 'ScoConfigSaveRequest',
+    declaration: 'export type ScoConfigSaveRequest = {\n    name: string;\n    kind: ScoWorkloadKind;\n    description?: string;\n    spec: ScoWorkloadSpec;\n    replace?: boolean;\n};',
   },
   {
     name: 'ScoDataSource',
@@ -7292,7 +7390,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ScoJobCreated',
-    declaration: 'export interface ScoJobCreated {\n    name: string;\n    workspace?: string;\n}',
+    declaration: 'export interface ScoJobCreated {\n    name: string;\n    workspace?: string;\n    sessionId?: SessionId;\n    description?: string;\n}',
   },
   {
     name: 'ScoJobCreation',
@@ -7359,6 +7457,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ScoResourceOptionsRequest {\n    workspace?: string;\n    refresh?: boolean;\n}',
   },
   {
+    name: 'ScoSavedConfig',
+    declaration: 'export type ScoSavedConfig = {\n    kind: ScoWorkloadKind;\n    description?: string;\n    spec: ScoWorkloadSpec;\n    createdAt: string;\n    updatedAt: string;\n    lastUsedAt?: string;\n};',
+  },
+  {
     name: 'ScoSource',
     declaration: 'export type ScoSource = ScoDataSource | ScoCodeSource | ScoOutputSource;',
   },
@@ -7373,6 +7475,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ScoVolume',
     declaration: 'export type ScoVolume = {\n    type: \'afs\';\n    id: string;\n} | {\n    type: \'aoss\';\n    bucket: string;\n    endpoint: string;\n};',
+  },
+  {
+    name: 'ScoWorkloadKind',
+    declaration: 'export type ScoWorkloadKind = \'job\' | \'devmachine\';',
+  },
+  {
+    name: 'ScoWorkloadSpec',
+    declaration: 'export type ScoWorkloadSpec = Omit<ScoJobTemplate, \'description\'> & {\n    workspace?: string;\n    queueId?: string;\n};',
   },
   {
     name: 'ScoWorkspaceRequest',

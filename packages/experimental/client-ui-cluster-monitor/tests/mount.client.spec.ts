@@ -71,7 +71,10 @@ async function fixture(fail = false, tabs = true) {
   }
   new Remote()
   const ok = { ok: true, value: {} }
-  const cluster = { watch: vi.fn(async () => ok), unwatch: vi.fn(async () => ok), refresh: vi.fn(async () => ok) }
+  const cluster = {
+    watch: vi.fn(async () => ok), unwatch: vi.fn(async () => ok), refresh: vi.fn(async () => ok), configure: vi.fn(async () => ok),
+    metricSources: vi.fn(async (): Promise<unknown> => ({ ok: true, value: ['logs', 'wandb'] })),
+  }
   ctx.provide('remote.cluster', cluster)
   const clusterConfig = {
     saveSource: vi.fn(async () => ok), deleteSource: vi.fn(async () => ok), refreshOptions: vi.fn(async () => ok),
@@ -127,6 +130,11 @@ it('registers the localized page and sidebar entry, maps Remote results, and wit
     expect(await actions.refresh(id)).toBeNull()
     b.cluster.unwatch.mockResolvedValueOnce({ ok: false, error: new RemoteError('cluster/not-found', 'gone', { watchId: id }) } as never)
     expect(await actions.unwatch(id)).toBe('gone')
+    expect(await actions.configure(id, { description: 'x' })).toBeNull()
+    expect(b.cluster.configure).toHaveBeenCalledWith(id, { description: 'x' })
+    expect(await actions.metricSources()).toEqual({ kinds: ['logs', 'wandb'] })
+    b.cluster.metricSources.mockResolvedValueOnce({ ok: false, error: new RemoteError('cluster/not-found', 'offline', { watchId: id }) })
+    expect(await actions.metricSources()).toEqual({ error: 'offline' })
 
     expect(b.tabTypes).toHaveLength(1)
     const [tab] = b.tabTypes

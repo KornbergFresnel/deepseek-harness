@@ -36,6 +36,15 @@
         runningPollMs: 30000
         # 排队或状态未知时的轮询间隔（毫秒，最小 5000）
         pendingPollMs: 60000
+        # 训练曲线默认从日志解析（experiment-logger 表格、JSON 行、key=value 行）；
+        # 其他格式可在任务详情里改指标来源，或在这里改默认解析器
+        # logParsers:
+        #   - kind: regex
+        #     pattern: 'iter (?<step>\d+) .*loss=(?<loss>[\d.]+)'
+    # 从 Weights & Biases 读取训练曲线（可选）：需要环境变量或凭据 WANDB_API_KEY，
+    # 然后在任务详情把指标来源改成 Weights & Biases，或设 cluster-monitor 的 defaultMetricSource: wandb
+    # - id: cluster-metrics-wandb
+    #   name: '@deepseek-ai/dsh-experimental-cluster-metrics-wandb'
     # Web 侧边栏里的“集群任务”和“集群配置”页面
     - id: client-ui-cluster-monitor
       name: '@deepseek-ai/dsh-experimental-client-ui-cluster-monitor'

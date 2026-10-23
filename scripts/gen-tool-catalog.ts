@@ -652,14 +652,15 @@ const TOOL_PACKAGES: ToolPackage[] = [
     pkg: '@deepseek-ai/dsh-experimental-tool-sco',
     dir: 'tool-sco',
     source: 'packages/experimental/tool-sco/src/index.ts',
-    requires: ['ctx.tools', 'ctx.sco', 'ctx.scoSubmit for sources and template submission', 'ctx.approval for submission and stop'],
-    writes: ['tool/call', 'SenseCore SSP training jobs', 'registered sources', 'tool/result'],
+    requires: ['ctx.tools', 'ctx.sco', 'ctx.scoSubmit for sources and template submission', 'ctx.clusterMonitor for job watching', 'ctx.approval for submission and stop'],
+    writes: ['tool/call', 'SenseCore SSP training jobs', 'registered sources', 'cluster job watches', 'tool/result'],
     async mount(ctx) {
       ctx.provide('sco', {})
       ctx.provide('scoSubmit', {})
+      ctx.provide('clusterMonitor', {})
       await ctx.plugin(ToolSco, {})
     },
-    note: 'Explicit experimental composition only. Runs the local sco CLI; submission without dryRun and stop ask the user unless confirmMutations is false. Source, resource-option, and template-submission tools appear only while sco-submit is mounted.',
+    note: 'Explicit experimental composition only. Runs the local sco CLI; submission without dryRun and stop ask the user unless confirmMutations is false. Source, resource-option, and template-submission tools appear only while sco-submit is mounted, and sco_job_watch only while cluster-monitor is mounted.',
   },
   {
     pkg: '@deepseek-ai/dsh-tool-workflow',

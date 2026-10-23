@@ -17,8 +17,14 @@ afterEach(() => { cleanup() })
 const t = makeTranslate(zh)
 const first = brandString<ClusterWatchId>('w1'), second = brandString<ClusterWatchId>('w2')
 const rows: ClusterWatchRow[] = [
-  { id: first, name: 'job-wbt', workspace: 'team-a', origin: 'created', phase: 'running', rawState: 'Running', watchedAt: 't', step: 20, latest: { loss: 0.25 } },
-  { id: second, name: 'job-old', origin: 'manual', phase: 'failed', rawState: 'Failed', watchedAt: 't', error: 'describe failed', latest: {} },
+  {
+    id: first, name: 'job-wbt', workspace: 'team-a', origin: 'created', description: 'Train the G1 tracking policy', phase: 'running', rawState: 'Running',
+    watchedAt: 't', step: 20, latest: { loss: 0.25 }, metrics: { kind: 'logs' }, metricsDefault: true,
+  },
+  {
+    id: second, name: 'job-old', origin: 'manual', displayName: 'old sweep', phase: 'failed', rawState: 'Failed', watchedAt: 't', error: 'describe failed',
+    latest: {}, metrics: { kind: 'wandb', options: { run: 'team/rlh/abc' } }, metricsDefault: false, metricsError: 'run not found',
+  },
 ]
 const detail = (row: ClusterWatchRow, extra: Partial<ClusterJobDetail> = {}): ClusterJobDetail => ({
   ...row, series: [], logTail: '', describe: null, ...extra,
@@ -36,7 +42,11 @@ function fixture(initial: Mirror<ClusterWatchRow[]>) {
   const watch = vi.fn(async () => null as string | null)
   const unwatch = vi.fn(async () => null as string | null)
   const refresh = vi.fn(async () => null as string | null)
-  const props = { useWatchList: bindSnapshotSelector(list), openJob, watch, unwatch, refresh, t } as ClusterPageProps
+  const configure = vi.fn(async () => null as string | null)
+  const metricSources = vi.fn(async () => ({ kinds: ['logs'] }))
+  const props = {
+    useWatchList: bindSnapshotSelector(list), openJob, watch, unwatch, refresh, configure, metricSources, t,
+  } as ClusterPageProps
   return { ...render(<ClusterPage {...props} />), list, jobs, openJob, watch, unwatch, refresh }
 }
 
@@ -63,9 +73,11 @@ it('adds a trimmed watch, keeps the name on failure, and ignores a blank name', 
   expect(b.watch).toHaveBeenLastCalledWith({ name: 'job-wbt', workspace: 'team-a' })
   expect(name.value).toBe(' job-wbt ')
   fireEvent.change(screen.getByLabelText(zh['watch.workspace']), { target: { value: '' } })
+  fireEvent.change(screen.getByLabelText(zh['watch.description']), { target: { value: ' Sweep lr ' } })
   fireEvent.submit(form)
   await waitFor(() => { expect(name.value).toBe('') })
-  expect(b.watch).toHaveBeenLastCalledWith({ name: 'job-wbt' })
+  expect(screen.getByLabelText<HTMLInputElement>(zh['watch.description']).value).toBe('')
+  expect(b.watch).toHaveBeenLastCalledWith({ name: 'job-wbt', description: 'Sweep lr' })
   expect(screen.queryByRole('alert')).toBeNull()
 })
 
@@ -74,6 +86,8 @@ it('selects the first job, switches jobs, and renders facts, curves, logs, and t
   const list = screen.getByRole('list', { name: zh['list.aria'] })
   expect(within(list).getByText('team-a · 第 20 步')).toBeTruthy()
   expect(within(list).getByText('· ⚠')).toBeTruthy()
+  expect(within(list).getByText('Train the G1 tracking policy')).toBeTruthy()
+  expect(within(list).getByText('old sweep')).toBeTruthy()
   expect(b.openJob).toHaveBeenLastCalledWith(first)
   expect(screen.getAllByText(zh['list.loading'])).toHaveLength(1)
   act(() => {
@@ -92,6 +106,8 @@ it('selects the first job, switches jobs, and renders facts, curves, logs, and t
   expect(within(section).getByText('最新 0.25')).toBeTruthy()
   expect(within(section).getAllByText('step 20')).toHaveLength(1)
   expect(within(section).getByText('{"state":"Running"}')).toBeTruthy()
+  expect(within(section).getByText('Train the G1 tracking policy')).toBeTruthy()
+  expect(within(section).getByText('指标来源：日志解析（默认）')).toBeTruthy()
 
   fireEvent.click(within(list).getByText('job-old'))
   expect(b.jobs.get(first)!.dispose).toHaveBeenCalledOnce()
@@ -103,6 +119,8 @@ it('selects the first job, switches jobs, and renders facts, curves, logs, and t
   expect(screen.getByText(zh['metrics.empty'])).toBeTruthy()
   expect(screen.getByText(zh['logs.empty'])).toBeTruthy()
   expect(screen.getByText(zh['origin.manual'])).toBeTruthy()
+  expect(screen.getByText('读取指标失败：run not found')).toBeTruthy()
+  expect(screen.getByText('指标来源：Weights & Biases')).toBeTruthy()
   expect(screen.getAllByText('—').length).toBeGreaterThan(0)
 })
 
