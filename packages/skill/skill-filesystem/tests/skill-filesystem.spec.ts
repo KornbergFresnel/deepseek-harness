@@ -218,6 +218,57 @@ describe('FileSystemSkillProvider', () => {
     expect((await ctx.skills.list({ cwd: noGit })).map(skill => skill.name)).toContain('fallback-root')
   })
 
+  it('discovers other agent tools\' project skill roots after .agents and before runtime skills', async () => {
+    const home = await tempDir('skill-compat-home')
+    const project = await tempDir('skill-compat-project')
+    await mkdir(join(project, '.git'), { recursive: true })
+
+    await writeSkill(join(project, '.claude/skills'), 'claude-only', 'Claude skill')
+    await writeSkill(join(project, '.codex/skills'), 'codex-only', 'Codex skill')
+    await writeSkill(join(project, '.claude/skills'), 'shared', 'Claude shared')
+    await writeSkill(join(project, '.codex/skills'), 'shared', 'Codex shared')
+    await writeSkill(join(project, '.codex/skills'), 'agents-wins', 'Codex loses')
+    await writeSkill(join(project, '.agents/skills'), 'agents-wins', 'Agents wins')
+    await writeSkill(join(project, '.claude/skills'), 'runtime-name', 'Claude beats runtime')
+    const ctx = await setupLocal(home)
+    ctx.skills.register({
+      name: 'runtime-name',
+      description: 'Runtime loses',
+      content: 'Runtime body.',
+      source: 'runtime',
+    })
+
+    const skills = await ctx.skills.list({ cwd: project })
+    expect(skills.map(skill => [skill.name, skill.source, skill.description])).toEqual([
+      ['agents-wins', 'project-agents', 'Agents wins'],
+      ['claude-only', 'project-claude', 'Claude skill'],
+      ['codex-only', 'project-codex', 'Codex skill'],
+      ['runtime-name', 'project-claude', 'Claude beats runtime'],
+      ['shared', 'project-claude', 'Claude shared'],
+    ])
+    expect((await ctx.skills.get('codex-only', { cwd: project }))?.content).toBe('Use the skill.')
+
+    const custom = await setupLocal(home, { projectCompatSkillDirs: [{ path: './tools/cursor/skills/', source: 'project-cursor' }] })
+    await writeSkill(join(project, 'tools/cursor/skills'), 'cursor-only', 'Cursor skill')
+    expect((await custom.skills.list({ cwd: project })).map(skill => [skill.name, skill.source])).toEqual([
+      ['agents-wins', 'project-agents'],
+      ['cursor-only', 'project-cursor'],
+    ])
+  })
+
+  it('rejects project compatibility roots outside the project at plugin load', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SkillRegistry)
+
+    for (const path of ['/abs/skills', '..', '../sibling/skills', '.', 'a/../..']) {
+      await expect(ctx.plugin(SkillFileSystem, { projectCompatSkillDirs: [{ path, source: 'project-x' }] }))
+        .rejects.toThrow('must be a relative directory inside the project')
+    }
+    await expect(ctx.plugin(SkillFileSystem, { projectCompatSkillDirs: [{ path: 'skills', source: '' }] })).rejects.toThrow('source')
+    const tooMany = Array.from({ length: 50 }, (_, index) => ({ path: `dir-${index}`, source: `project-${index}` }))
+    await expect(ctx.plugin(SkillFileSystem, { projectCompatSkillDirs: tooMany })).rejects.toThrow('at most 49 entries')
+  })
+
   it('lets project skills override runtime while runtime overrides custom and user skills', async () => {
     const home = await tempDir('skill-runtime-priority')
     const project = await tempDir('skill-runtime-project')

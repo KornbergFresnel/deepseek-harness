@@ -34,15 +34,28 @@ import {
 
 const PROJECT_DSH_RANK = 100
 const PROJECT_AGENTS_RANK = 200
+const PROJECT_COMPAT_RANK_LIMIT = 250
 const CUSTOM_RANK = 300
 const USER_DSH_RANK = 400
 const USER_AGENTS_RANK = 500
 const DEFAULT_WATCH_STABILITY_THRESHOLD_MS = 200
 const DEFAULT_WATCH_POLL_INTERVAL_MS = 100
 const DEFAULT_WATCH_MAX_PROJECTS = 128
+const DEFAULT_PROJECT_COMPAT_SKILL_DIRS: readonly ProjectSkillDir[] = [
+  { path: '.claude/skills', source: 'project-claude' },
+  { path: '.codex/skills', source: 'project-codex' },
+]
 
 export const name = 'skill-filesystem'
 export const inject = ['skills']
+
+/** One project-relative skill root that another agent tool owns. */
+export interface ProjectSkillDir {
+  /** Directory relative to the project root; it must stay inside the project. */
+  path: string
+  /** Source label reported for skills discovered under this root. */
+  source: string
+}
 
 /** Local filesystem skill provider configuration. */
 export interface Config {
@@ -54,6 +67,8 @@ export interface Config {
   dshHome?: string
   /** Shared agent config root. Defaults to `$DSH_AGENTS_HOME` or `~/.agents`. */
   agentsHome?: string
+  /** Other agent tools' project skill roots, scanned in order after `.agents/skills`. Defaults to `.claude/skills` and `.codex/skills`. */
+  projectCompatSkillDirs?: ProjectSkillDir[]
   /** Additional skill roots scanned after project roots and before user roots. */
   customSkillDirs?: string[]
   /** Whether host-local skill roots are watched for catalog changes. */
@@ -77,6 +92,10 @@ export const Config: Schema<Config> = z.object({
   includeDefaultRoots: z.boolean().default(true),
   dshHome: z.string(),
   agentsHome: z.string(),
+  projectCompatSkillDirs: z.array(z.object({
+    path: z.string().min(1).required(),
+    source: z.string().min(1).required(),
+  })).default(DEFAULT_PROJECT_COMPAT_SKILL_DIRS.map(dir => ({ ...dir }))),
   customSkillDirs: z.array(z.string()).default([]),
   watch: z.boolean().default(true),
   watchUsePolling: z.boolean().default(false),
@@ -151,6 +170,7 @@ export class FileSystemSkillProvider implements SkillProvider {
   private readonly includeDefaultRoots: boolean
   private readonly dshHome: string
   private readonly agentsHome: string
+  private readonly projectCompatSkillDirs: readonly ProjectSkillDir[]
   private readonly customSkillDirs: string[]
   private readonly watchManager: SkillWatchManager
   private readonly bundledSkillDir: string | undefined
@@ -165,6 +185,7 @@ export class FileSystemSkillProvider implements SkillProvider {
     this.includeDefaultRoots = config.includeDefaultRoots ?? true
     this.dshHome = resolveDshHome(config.dshHome)
     this.agentsHome = resolveAgentsHome(config.agentsHome)
+    this.projectCompatSkillDirs = resolveProjectCompatSkillDirs(config.projectCompatSkillDirs ?? DEFAULT_PROJECT_COMPAT_SKILL_DIRS)
     this.customSkillDirs = (config.customSkillDirs ?? []).map(root => resolve(root))
     this.watchManager = new SkillWatchManager(ctx, control.invalidate, resolveWatchConfig(config))
     control.signal.addEventListener('abort', () => { void this.dispose() }, { once: true })
@@ -248,6 +269,12 @@ export class FileSystemSkillProvider implements SkillProvider {
       roots.push(
         { path: join(projectRoot, '.dsh/skills'), source: 'project-dsh', rank: PROJECT_DSH_RANK, projectRoot },
         { path: join(projectRoot, '.agents/skills'), source: 'project-agents', rank: PROJECT_AGENTS_RANK, projectRoot },
+        ...this.projectCompatSkillDirs.map((dir, index) => ({
+          path: join(projectRoot, dir.path),
+          source: dir.source,
+          rank: PROJECT_AGENTS_RANK + 1 + index,
+          projectRoot,
+        })),
       )
     }
     roots.push(...this.customSkillDirs.map(path => ({ path, source: 'custom' as const, rank: CUSTOM_RANK })))
@@ -614,6 +641,21 @@ async function settleWatcherOpening(opening: Promise<void> | undefined): Promise
   } catch {
     // Watch startup already logged the underlying failure; teardown only contains it.
   }
+}
+
+function resolveProjectCompatSkillDirs(dirs: readonly ProjectSkillDir[]): ProjectSkillDir[] {
+  // Ranks stay below the runtime rank so every project root keeps overriding runtime skills.
+  const capacity = PROJECT_COMPAT_RANK_LIMIT - PROJECT_AGENTS_RANK - 1
+  if (dirs.length > capacity) {
+    throw new TypeError(`skill-filesystem: projectCompatSkillDirs accepts at most ${capacity} entries`)
+  }
+  return dirs.map(({ path, source }) => {
+    const normalized = join(path)
+    if (isAbsolute(path) || normalized === '.' || containedSegments('.', normalized) === undefined) {
+      throw new TypeError(`skill-filesystem: projectCompatSkillDirs path "${path}" must be a relative directory inside the project`)
+    }
+    return { path: normalized, source }
+  })
 }
 
 function resolveWatchConfig(config: Config): ResolvedWatchConfig {

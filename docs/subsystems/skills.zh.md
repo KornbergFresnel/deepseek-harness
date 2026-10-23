@@ -69,6 +69,7 @@ interface SkillProviderControl {
 |---|---|---|
 | 100 | `project-dsh` | `<projectRoot>/.dsh/skills` |
 | 200 | `project-agents` | `<projectRoot>/.agents/skills` |
+| 201–249 | `project-claude`、`project-codex` 等 | `<projectRoot>/<Config.projectCompatSkillDirs[i].path>`；默认依次为 `.claude/skills` 与 `.codex/skills` |
 | 300 | `custom` | `Config.customSkillDirs` |
 | 400 | `user-dsh` | `<dshHome>/skills` |
 | 500 | `user-agents` | `<agentsHome>/skills` |
