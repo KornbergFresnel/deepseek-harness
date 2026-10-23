@@ -37,6 +37,7 @@ flowchart LR
   pkg_experimental_sco_submit["experimental-sco-submit"]
   svc_scoSubmit["ctx.scoSubmit<br/>SSP job composition from sources and templates"]
   svc_clusterMonitor["ctx.clusterMonitor<br/>Watched SSP job polling"]
+  pkg_experimental_cluster_metrics_wandb["experimental-cluster-metrics-wandb"]
   pkg_experimental_git_branch["experimental-git-branch"]
   svc_gitBranch["ctx.gitBranch<br/>Session Git branch"]
   pkg_working_directory["working-directory"]
@@ -484,6 +485,8 @@ flowchart LR
   svc_browserUse --> pkg_experimental_browser_use_playwright_mcp
   svc_browserUse --> pkg_experimental_browser_use_stagehand_native
   svc_clientModules --> pkg_client_hmr
+  svc_clusterMonitor --> pkg_experimental_cluster_metrics_wandb
+  svc_clusterMonitor --> pkg_experimental_tool_sco
   svc_compaction --> pkg_compaction_basic
   svc_computerUse --> pkg_experimental_computer_use_cua_driver_mcp
   svc_computerUse --> pkg_experimental_computer_use_cua_driver_native
@@ -639,7 +642,7 @@ flowchart LR
 | `ctx.worktrees` | `seam` | [`experimental-worktree`](../packages/experimental/worktree) | [`experimental-worktree`](../packages/experimental/worktree) | [`experimental-tool-worktree`](../packages/experimental/tool-worktree) | - | Explicit experimental creation from a pinned local commit. Existing write permissions govern checkout and shared Git metadata; the working-directory service owns the resulting Session directory. |
 | `ctx.sco` | `seam` | [`experimental-sco`](../packages/experimental/sco) | [`experimental-sco`](../packages/experimental/sco) | [`experimental-tool-sco`](../packages/experimental/tool-sco), [`experimental-cluster-monitor`](../packages/experimental/cluster-monitor), [`experimental-sco-submit`](../packages/experimental/sco-submit) | - | Explicit experimental gateway to the local sco CLI. Runs unconfined because the CLI needs network access and its credential profile; the tool package asks before submission and stop. |
 | `ctx.scoSubmit` | `seam` | [`experimental-sco-submit`](../packages/experimental/sco-submit) | [`experimental-sco-submit`](../packages/experimental/sco-submit) | [`experimental-tool-sco`](../packages/experimental/tool-sco) | - | Explicit experimental registry of data, code, and output locations plus cached queue options; expands configured templates into gateway creation flags. |
-| `ctx.clusterMonitor` | `core` | [`experimental-cluster-monitor`](../packages/experimental/cluster-monitor) | - | - | - | Polls watched jobs through the SSP gateway on Host timers and serves state, log-derived metrics, and log tails to the Web page; nothing reaches a model request. |
+| `ctx.clusterMonitor` | `seam` | [`experimental-cluster-monitor`](../packages/experimental/cluster-monitor) | [`experimental-cluster-monitor`](../packages/experimental/cluster-monitor) | [`experimental-tool-sco`](../packages/experimental/tool-sco), [`experimental-cluster-metrics-wandb`](../packages/experimental/cluster-metrics-wandb) | - | Polls watched jobs through the SSP gateway on Host timers and serves state, curves from registered metric sources, and log tails to the Web page; polling never reaches a model request, and only sco_job_watch results do. |
 | `ctx.gitBranch` | `core` | [`experimental-git-branch`](../packages/experimental/git-branch) | - | - | - | Reads and switches the Git branch of a Session working directory through the Session subprocess provider for the Web client; nothing reaches a model request. |
 | `ctx.workingDirectory` | `seam` | [`working-directory`](../packages/session/working-directory) | [`working-directory`](../packages/session/working-directory) | [`tool-working-directory`](../packages/session/tool-working-directory), [`tool-fs`](../packages/fs/tool-fs), [`tool-bash`](../packages/shell/tool-bash), [`tool-pwsh`](../packages/shell/tool-pwsh), [`subagent`](../packages/subagent/subagent), [`sdk-jsonrpc-server`](../packages/sdk/server) | - | One Session projection owns the effective execution directory. The filesystem validates changes; user context reports them while original metadata and write grants stay fixed. |
 | `ctx.mcpResources` | `seam` | [`mcp-resources`](../packages/mcp/mcp-resources) | [`mcp-client`](../packages/mcp/mcp-client) | [`mcp-resources`](../packages/mcp/mcp-resources) | - | Connection-owned providers serve shared resource tools in the calling agent scope. |

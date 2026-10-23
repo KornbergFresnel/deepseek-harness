@@ -45,7 +45,7 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`, `owning Agent session` | `tool/call`, `todo/write`, `tool/result` | - | todo_write is session-owned state; UIs render the latest todo/write event as a checklist. `allowParallelInProgress` is required with no default, so the catalog states its choice: `true`, whose description invites several `in_progress` items. A deployment choosing `false` receives the same tool with a description asking for exactly one active task. |
 | `@deepseek-ai/dsh-tool-working-directory` | `working_directory` | `ctx.tools`, `ctx.workingDirectory` | `tool/call`, `working-directory/change`, `user context for directory changes`, `tool/result` | - | Reads or changes the calling Session directory. Existing shells and processes retain their own directories; origin metadata and permission roots stay fixed. |
 | `@deepseek-ai/dsh-experimental-tool-worktree` | `create_worktree` | `ctx.tools`, `ctx.worktrees`, `a calling Agent` | `tool/call`, `Git branch and checkout`, `working-directory/change`, `tool/result` | - | Explicit experimental composition only. Creates a new branch and checkout from a pinned local commit under existing write permissions, then changes the Session directory. Leaving retains the branch and checkout. |
-| `@deepseek-ai/dsh-experimental-tool-sco` | `sco_config_form`, `sco_job_create`, `sco_job_describe`, `sco_job_list`, `sco_job_logs`, `sco_job_stop`, `sco_job_submit`, `sco_job_workers`, `sco_resource_options`, `sco_source_add`, `sco_source_remove`, `sco_source_update`, `sco_sources_list`, `sco_volume_quota`, `sco_volumes_list` | `ctx.tools`, `ctx.sco`, `ctx.scoSubmit for sources and template submission`, `ctx.approval for submission and stop` | `tool/call`, `SenseCore SSP training jobs`, `registered sources`, `tool/result` | - | Explicit experimental composition only. Runs the local sco CLI; submission without dryRun and stop ask the user unless confirmMutations is false. Source, resource-option, and template-submission tools appear only while sco-submit is mounted. |
+| `@deepseek-ai/dsh-experimental-tool-sco` | `sco_config_form`, `sco_job_create`, `sco_job_describe`, `sco_job_list`, `sco_job_logs`, `sco_job_stop`, `sco_job_submit`, `sco_job_watch`, `sco_job_workers`, `sco_resource_options`, `sco_source_add`, `sco_source_remove`, `sco_source_update`, `sco_sources_list`, `sco_volume_quota`, `sco_volumes_list` | `ctx.tools`, `ctx.sco`, `ctx.scoSubmit for sources and template submission`, `ctx.clusterMonitor for job watching`, `ctx.approval for submission and stop` | `tool/call`, `SenseCore SSP training jobs`, `registered sources`, `cluster job watches`, `tool/result` | - | Explicit experimental composition only. Runs the local sco CLI; submission without dryRun and stop ask the user unless confirmMutations is false. Source, resource-option, and template-submission tools appear only while sco-submit is mounted, and sco_job_watch only while cluster-monitor is mounted. |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`, `ctx.workflowEngine`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents the script children)` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-workspace-dependencies` | `load_workspace_dependencies` | `ctx.tools` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`, `web_search` | `ctx.tools`, `ctx.web`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps. |
@@ -2823,6 +2823,10 @@ Submit a SenseCore SSP training job. Run with dryRun first to validate and see t
       "type": "string",
       "description": "Console display name."
     },
+    "description": {
+      "type": "string",
+      "description": "One sentence, in the user's language, on what the job does and how it differs from similar jobs, for example \"Train the G1 tracking policy on LAFAN, 8 GPUs, lr 3e-4\". Shown in the user's job lists."
+    },
     "image": {
       "type": "string",
       "description": "Container image reference."
@@ -3194,6 +3198,10 @@ Submit an SSP job composed from a template and registered sources: data sources 
       "type": "string",
       "description": "Console display name."
     },
+    "description": {
+      "type": "string",
+      "description": "One sentence, in the user's language, on what the job does and how it differs from similar jobs, for example \"Train the G1 tracking policy on LAFAN, 8 GPUs, lr 3e-4\". Shown in the user's job lists."
+    },
     "queueId": {
       "type": "string",
       "description": "Full queue resource id. Omit to use the configured default."
@@ -3205,6 +3213,52 @@ Submit an SSP job composed from a template and registered sources: data sources 
     "dryRun": {
       "type": "boolean",
       "description": "Validate and return the merged TrainingJob without submitting."
+    }
+  },
+  "required": [
+    "name"
+  ]
+}
+```
+
+Source: [`packages/experimental/tool-sco/src/index.ts`](../packages/experimental/tool-sco/src/index.ts)
+
+### `sco_job_watch`
+
+Watch an SSP job on the user's cluster job pages, or change a watched job's description or where its training curves come from. Jobs created through sco_job_create and sco_job_submit are watched already. Set metrics when the code repository's skills, docs, or logs show how it reports metrics: kind logs parses the job log with options.parsers, a list of { kind: "experiment-logger" } (rlightning-humanoid tables and [step=N] lines), { kind: "json-lines", stepKey? }, { kind: "key-value", stepKey? } (step=N loss=0.1 lines), or { kind: "regex", pattern } whose named group step captures the step and whose other named groups capture metric values; kind wandb, when installed, reads a Weights & Biases run with options.run set to "entity/project/run-id" or the run URL, or omitted to find the run URL in the job log. A kind that is not installed fails with the installed kinds. A new source clears the stored curves.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Job name, for example job-wbt-g1-0420."
+    },
+    "workspace": {
+      "type": "string",
+      "description": "SSP workspace name. Omit to use the configured default."
+    },
+    "description": {
+      "type": "string",
+      "description": "One sentence, in the user's language, on what the job does and how it differs from similar jobs, for example \"Train the G1 tracking policy on LAFAN, 8 GPUs, lr 3e-4\". Shown in the user's job lists."
+    },
+    "metrics": {
+      "type": "object",
+      "description": "Metric source; omit to keep the current one.",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "description": "logs, or another installed source such as wandb."
+        },
+        "options": {
+          "description": "Source options object."
+        }
+      },
+      "required": [
+        "kind"
+      ]
     }
   },
   "required": [
@@ -3479,7 +3533,7 @@ List the AFS storage volumes the user's sco credentials can see: id, name (when 
 
 Source: [`packages/experimental/tool-sco/src/index.ts`](../packages/experimental/tool-sco/src/index.ts)
 
-Explicit experimental composition only. Runs the local sco CLI; submission without dryRun and stop ask the user unless confirmMutations is false. Source, resource-option, and template-submission tools appear only while sco-submit is mounted.
+Explicit experimental composition only. Runs the local sco CLI; submission without dryRun and stop ask the user unless confirmMutations is false. Source, resource-option, and template-submission tools appear only while sco-submit is mounted, and sco_job_watch only while cluster-monitor is mounted.
 
 <a id="deepseek-aidsh-tool-workflow"></a>
 

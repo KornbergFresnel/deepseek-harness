@@ -1,7 +1,7 @@
-/** Pure readers for `sco ssp jobs` output: job phase and times, rlightning-humanoid metric lines, and log tails. */
+/** Pure readers for `sco ssp jobs` output: job phase, times, and display name, metric records in log text, and log tails. */
 
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
-import type { ClusterJobPhase } from './types.ts'
+import type { ClusterJobPhase, ClusterLogParser, ClusterMetricRecord } from './types.ts'
 
 /** Facts the monitor keeps from one SSP job object. */
 export interface JobFacts {
@@ -10,12 +10,7 @@ export interface JobFacts {
   readonly createdAt?: string
   readonly startedAt?: string
   readonly finishedAt?: string
-}
-
-/** One parsed metric record: a training step and its finite scalar values. */
-export interface MetricRecord {
-  readonly step: number
-  readonly values: Readonly<Record<string, number>>
+  readonly displayName?: string
 }
 
 const PHASE_PATTERNS: ReadonlyArray<readonly [RegExp, ClusterJobPhase]> = [
@@ -72,21 +67,25 @@ function firstString(job: JsonValue, keys: readonly string[]): string | undefine
 /**
  * Read state and times from one `sco ssp jobs describe --format=json` object.
  * @param job - parsed CLI output.
- * @returns raw state, its phase, and the times that are present.
+ * @returns raw state, its phase, and the times and display name that are present.
  */
 export function jobFacts(job: JsonValue): JobFacts {
   const rawState = firstString(job, ['state', 'phase', 'status']) ?? null
   const createdAt = firstString(job, ['create_time', 'created_at', 'creation_time'])
   const startedAt = firstString(job, ['start_time', 'started_at'])
   const finishedAt = firstString(job, ['end_time', 'finish_time', 'finished_at', 'completion_time'])
+  const displayName = firstString(job, ['display_name', 'displayName'])
   return {
     rawState,
     phase: phaseOf(rawState),
     ...createdAt === undefined ? {} : { createdAt },
     ...startedAt === undefined ? {} : { startedAt },
     ...finishedAt === undefined ? {} : { finishedAt },
+    ...displayName === undefined ? {} : { displayName },
   }
 }
+
+const lines = (text: string): string[] => text.split(/\r?\n/u)
 
 const TABLE_HEADER = /^\s*metric\s+value\s*$/u
 const TABLE_RULE = /^\s*-+\s+-+\s*$/u
@@ -99,7 +98,7 @@ function finite(text: string): number | undefined {
   return text.length > 0 && Number.isFinite(value) ? value : undefined
 }
 
-function record(pairs: Iterable<readonly [string, string]>): MetricRecord | undefined {
+function record(pairs: Iterable<readonly [string, string]>): ClusterMetricRecord | undefined {
   let step: number | undefined
   const values: Record<string, number> = {}
   for (const [key, text] of pairs) {
@@ -122,12 +121,12 @@ function group(match: RegExpExecArray, index: number): string {
  * @param text - log text in any order of other lines.
  * @returns metric records in log order.
  */
-export function parseMetrics(text: string): MetricRecord[] {
-  const records: MetricRecord[] = []
-  const push = (parsed: MetricRecord | undefined): void => { if (parsed !== undefined) records.push(parsed) }
+export function parseExperimentLogger(text: string): ClusterMetricRecord[] {
+  const records: ClusterMetricRecord[] = []
+  const push = (parsed: ClusterMetricRecord | undefined): void => { if (parsed !== undefined) records.push(parsed) }
   let rows: [string, string][] | undefined
   let afterHeader = false
-  for (const line of text.split(/\r?\n/u)) {
+  for (const line of lines(text)) {
     if (rows !== undefined) {
       const row = TABLE_ROW.exec(line)
       if (row !== null) {
@@ -155,6 +154,111 @@ export function parseMetrics(text: string): MetricRecord[] {
   }
   if (rows !== undefined) push(record(rows))
   return records
+}
+
+/**
+ * Parse lines that hold one JSON object, optionally after a log prefix: the text from the first `{` to the last `}`.
+ * The step is the integer under `stepKey`; other finite numeric members are metric values, nested objects excluded.
+ * @param text - log text.
+ * @param stepKey - member holding the step.
+ * @returns metric records in log order.
+ */
+export function parseJsonLines(text: string, stepKey: string): ClusterMetricRecord[] {
+  const records: ClusterMetricRecord[] = []
+  for (const line of lines(text)) {
+    const start = line.indexOf('{')
+    const end = line.lastIndexOf('}')
+    if (start === -1 || end < start) continue
+    let value: JsonValue
+    try {
+      value = JSON.parse(line.slice(start, end + 1)) as JsonValue
+    } catch (_notJson) {
+      // Braces around text that is not JSON are an ordinary log line.
+      continue
+    }
+    /* v8 ignore next -- text from `{` to `}` that parses as JSON is always an object; the guard narrows the type. */
+    if (!isObject(value)) continue
+    const step = value[stepKey]
+    if (typeof step !== 'number') continue
+    const pairs: [string, string][] = [['step', String(step)]]
+    for (const [key, member] of Object.entries(value)) {
+      if (key !== stepKey && key !== 'step' && typeof member === 'number') pairs.push([key, String(member)])
+    }
+    const parsed = record(pairs)
+    if (parsed !== undefined) records.push(parsed)
+  }
+  return records
+}
+
+const NUMBER = String.raw`[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?`
+const KEY_VALUE = new RegExp(String.raw`([A-Za-z_][\w./-]*)\s*[=:]\s*(${NUMBER})(?![\w.])`, 'gu')
+
+/**
+ * Parse lines with a `stepKey=N` or `stepKey: N` pair and numeric `key=value` or `key: value` pairs.
+ * @param text - log text.
+ * @param stepKey - pair key holding the step.
+ * @returns metric records in log order.
+ */
+export function parseKeyValues(text: string, stepKey: string): ClusterMetricRecord[] {
+  const records: ClusterMetricRecord[] = []
+  for (const line of lines(text)) {
+    const pairs: [string, string][] = []
+    let hasStep = false
+    for (const match of line.matchAll(KEY_VALUE)) {
+      const key = group(match, 1)
+      if (key === stepKey) hasStep = true
+      pairs.push([key === stepKey ? 'step' : key, group(match, 2)])
+    }
+    const parsed = hasStep ? record(pairs) : undefined
+    if (parsed !== undefined) records.push(parsed)
+  }
+  return records
+}
+
+/**
+ * Compile a `regex` parser pattern; it must compile with the `u` flag and name a `step` group.
+ * @param pattern - JavaScript pattern source.
+ * @returns the compiled expression.
+ */
+export function compilePattern(pattern: string): RegExp {
+  const regex = new RegExp(pattern, 'gu')
+  if (!/\(\?<step>/u.test(pattern)) throw new Error('the pattern needs a named group "step"')
+  return regex
+}
+
+/**
+ * Parse every match of a compiled `regex` parser: group `step` is the step, other named groups are metric values.
+ * @param text - log text.
+ * @param regex - expression from {@link compilePattern}.
+ * @returns metric records in log order.
+ */
+export function parseRegex(text: string, regex: RegExp): ClusterMetricRecord[] {
+  const records: ClusterMetricRecord[] = []
+  for (const match of text.matchAll(regex)) {
+    // compilePattern requires the named group `step`, so every match carries groups.
+    const groups = match.groups as Readonly<Record<string, string | undefined>>
+    const pairs = Object.entries(groups).flatMap(([key, value]) => value === undefined ? [] : [[key, value] as [string, string]])
+    const parsed = record(pairs)
+    if (parsed !== undefined) records.push(parsed)
+  }
+  return records
+}
+
+/**
+ * Run each parser over the same log text and concatenate their records, parser by parser.
+ * @param text - log text.
+ * @param parsers - parsers from a validated `logs` source.
+ * @returns metric records.
+ */
+export function parseLogs(text: string, parsers: readonly ClusterLogParser[]): ClusterMetricRecord[] {
+  return parsers.flatMap((parser) => {
+    switch (parser.kind) {
+      case 'experiment-logger': return parseExperimentLogger(text)
+      case 'json-lines': return parseJsonLines(text, parser.stepKey ?? 'step')
+      case 'key-value': return parseKeyValues(text, parser.stepKey ?? 'step')
+      case 'regex': return parseRegex(text, compilePattern(parser.pattern))
+    }
+  })
 }
 
 /**

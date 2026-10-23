@@ -63,6 +63,7 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/experimental/sco': { kind: 'indirect', reason: 'The SSP job tools render gateway results; the gateway contributes no prompt text.' },
   'packages/experimental/sco-submit': { kind: 'indirect', reason: 'The SSP job tools render source, option, and submission results; the service contributes no prompt text.' },
   'packages/experimental/cluster-monitor': { kind: 'none', reason: 'Polls SSP jobs on Host timers and serves results only to the Web client.' },
+  'packages/experimental/cluster-metrics-wandb': { kind: 'none', reason: 'Reads W&B run history on Host polls and serves records only to the Web client.' },
   'packages/experimental/client-ui-cluster-monitor': { kind: 'none', reason: 'Renders Host watch state in the browser without writing to a Session.' },
   'packages/experimental/git-branch': { kind: 'none', reason: 'Serves branch state and switching only to the Web client.' },
   'packages/experimental/client-ui-git-branch': { kind: 'none', reason: 'Reads and switches the working tree branch in the browser without writing to a Session.' },

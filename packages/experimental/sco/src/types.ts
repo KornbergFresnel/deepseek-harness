@@ -128,6 +128,8 @@ export interface ScoJobStop {
 export interface ScoCallOrigin {
   /** Session whose agent requested the operation; absent for calls made outside a Session. */
   sessionId?: SessionId
+  /** What the job does, in a sentence, for job observers; not sent to the CLI. */
+  description?: string
 }
 
 /** A job the CLI accepted for creation. */
@@ -138,6 +140,8 @@ export interface ScoJobCreated {
   workspace?: string
   /** Session whose agent created the job; absent for creations made outside a Session. */
   sessionId?: SessionId
+  /** What the job does, as the caller described it. */
+  description?: string
 }
 
 /** One AFS volume from `sco afs volumes list --format=json`; absent fields were missing or empty in the CLI output. */

@@ -157,7 +157,7 @@ export class ScoGateway extends Service {
    * Creation is not idempotent: an existing name fails in the CLI.
    * @param request - job specification.
    * @param signal - cancellation; a cancelled creation may still have been accepted remotely.
-   * @param origin - Session that requested the creation, copied into `sco/job-created`.
+   * @param origin - Session that requested the creation and the job's description, copied into `sco/job-created`.
    * @returns the merged `TrainingJob` for a dry run, otherwise the created name and CLI output.
    * A real creation emits `sco/job-created` after the CLI succeeds.
    */
@@ -170,6 +170,7 @@ export class ScoGateway extends Service {
       name: request.name,
       ...workspace === undefined ? {} : { workspace },
       ...origin.sessionId === undefined ? {} : { sessionId: origin.sessionId },
+      ...origin.description === undefined ? {} : { description: origin.description },
     })
     return { kind: 'created', name: request.name, output: result.stdout.trim() }
   }

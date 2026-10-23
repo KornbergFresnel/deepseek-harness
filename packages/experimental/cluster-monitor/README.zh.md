@@ -44,8 +44,12 @@ kind: "package-reference"
 | `maxPointsPerSeries` | `2000` | 每个指标保留的点数，超过后较早的点隔一个丢一个（最小 16） |
 | `describeLength` | `32768` | 最近一次任务对象 JSON 文本的保留长度 |
 | `watchCreatedJobs` | `true` | 自动关注 `ctx.sco.createJob` 创建的每个任务 |
+| `defaultMetricSource` | `logs` | 关注项未指定时使用的指标来源；轮询时必须已注册 |
+| `logParsers` | `experiment-logger`、`json-lines`、`key-value` | 关注项未指定时 `logs` 来源使用的解析器；`regex` 模式必须能编译并包含 `step` 命名分组，否则加载失败 |
 
-`ctx.clusterMonitor` 提供 `list()`、`detail(watchId)`、`watch({ name, workspace?, sessionId? })`、`unwatch(watchId)`、`refresh(watchId)`，以及流 `follow()` 和 `followJob(watchId)`。`watch` 对同一名称和工作空间幂等。每行带有创建或关注该任务的 Session 的 `sessionId`，来自 `sco/job-created` 事件或请求；之后带 `sessionId` 的调用只会给没有 Session 的关注项补上，不会替换已有值。每次轮询读取任务对象，并把 `state` 映射为 `pending`、`running`、`succeeded`、`failed`、`stopped` 或 `unknown`；运行期间以及结束时各读取并解析一轮日志。到达终态后停止轮询；重启后恢复已保存的非终态关注；`sco` 调用失败会记录在关注项上，但不会停止轮询。指标来自 rlightning-humanoid 的 `metric  value` 表格和 `[step=N]  key=value` 行；只有带整数 `step` 且比已保存步数更新的记录才会被保留。
+`ctx.clusterMonitor` 提供 `list()`、`detail(watchId)`、`watch({ name, workspace?, sessionId?, description?, metrics? })`、`configure(watchId, { description?, metrics? })`、`metricSources()`、`unwatch(watchId)`、`refresh(watchId)`，以及流 `follow()` 和 `followJob(watchId)`。`watch` 对同一名称和工作空间幂等。每行带有创建或关注该任务的 Session 的 `sessionId`，来自 `sco/job-created` 事件或请求；之后带 `sessionId` 的调用只会给没有 Session 的关注项补上，不会替换已有值。每次轮询读取任务对象，并把 `state` 映射为 `pending`、`running`、`succeeded`、`failed`、`stopped` 或 `unknown`；运行期间以及结束时各读取并解析一轮日志。到达终态后停止轮询；重启后恢复已保存的非终态关注；`sco` 调用失败会记录在关注项上，但不会停止轮询。每行带有最多 500 个字符的 `description`，来自请求、`sco/job-created` 或 `configure`，以及从任务对象读取的控制台 `displayName`。
+
+训练曲线来自关注项 `metrics: { kind, options? }` 指定的指标来源，未指定时使用 `defaultMetricSource`；`configure` 传入 `metrics: null` 会恢复默认，更换来源会清空已保存的曲线。内置的 `logs` 来源用其 `parsers` 解析每轮日志：`experiment-logger` 读取 `metric  value` 表格和 `[step=N]  key=value` 行，`json-lines` 读取带数值步数键的 JSON 对象，`key-value` 读取 `step=N loss=0.5` 行，`regex` 读取以命名分组表示步数和数值的模式。其他插件通过 `registerMetricSource(kind, provider)` 注册来源，该调用返回注销函数；[`cluster-metrics-wandb`](../cluster-metrics-wandb/README.zh.md) 注册 `wandb`。读取失败或来源未注册会记录为该行的 `metricsError`，但不会停止轮询。只有带整数 `step` 且比已保存步数更新的记录才会被保留。
 
 -----
 
@@ -58,7 +62,8 @@ kind: "package-reference"
 | 源文件 | 职责 |
 |---|---|
 | [`src/index.ts`](src/index.ts) | 关注记录、轮询计时器、调用并发上限和 `cluster` Remote |
-| [`src/parse.ts`](src/parse.ts) | 任务状态与时间、指标行和日志尾部 |
+| [`src/parse.ts`](src/parse.ts) | 任务状态与时间、日志解析器和日志尾部 |
+| [`src/sources.ts`](src/sources.ts) | 指标来源提供方接口和内置 `logs` 来源 |
 | [`src/types.ts`](src/types.ts) | Remote 行、详情和错误码 |
 
 关注项保存在以工作空间和名称为键的 `cluster_monitor` 存储域中，因此不依赖 Session 也能跨重启保留。轮询运行在 Host 计时器上，从不进入模型请求。在 `unwatch` 或销毁之后才完成的轮询不会写入任何内容。销毁时会中止进行中的调用、取消计时器，并等待正在进行的轮询结束后再关闭存储域。

@@ -44,8 +44,12 @@ Mount the service beside the SSP gateway and a `storageDomain` provider, and add
 | `maxPointsPerSeries` | `2000` | Points kept per metric before every other older point is dropped (minimum 16) |
 | `describeLength` | `32768` | Retained length of the last job object as JSON text |
 | `watchCreatedJobs` | `true` | Watch every job `ctx.sco.createJob` creates |
+| `defaultMetricSource` | `logs` | Metric source of a watch that names none; must be registered when a watch polls |
+| `logParsers` | `experiment-logger`, `json-lines`, `key-value` | Parsers the `logs` source applies when a watch names none; a `regex` pattern must compile and name a `step` group at load |
 
-`ctx.clusterMonitor` serves `list()`, `detail(watchId)`, `watch({ name, workspace?, sessionId? })`, `unwatch(watchId)`, `refresh(watchId)`, and the streams `follow()` and `followJob(watchId)`. `watch` is idempotent per name and workspace. Each row carries the `sessionId` of the Session that created or watched the job, taken from `sco/job-created` or the request; a later call with a `sessionId` attaches it to a watch that has none and never replaces one. Each poll describes the job and maps its `state` to `pending`, `running`, `succeeded`, `failed`, `stopped`, or `unknown`; while it runs, and once when it ends, one log round is read and parsed. Polling stops at a terminal state, resumes for stored non-terminal watches after a restart, and records a failed `sco` call on the watch without stopping it. Metrics come from rlightning-humanoid's `metric  value` tables and `[step=N]  key=value` lines; a value is kept only when the record carries an integer `step` newer than the stored one.
+`ctx.clusterMonitor` serves `list()`, `detail(watchId)`, `watch({ name, workspace?, sessionId?, description?, metrics? })`, `configure(watchId, { description?, metrics? })`, `metricSources()`, `unwatch(watchId)`, `refresh(watchId)`, and the streams `follow()` and `followJob(watchId)`. `watch` is idempotent per name and workspace. Each row carries the `sessionId` of the Session that created or watched the job, taken from `sco/job-created` or the request; a later call with a `sessionId` attaches it to a watch that has none and never replaces one. Each poll describes the job and maps its `state` to `pending`, `running`, `succeeded`, `failed`, `stopped`, or `unknown`; while it runs, and once when it ends, one log round is read and parsed. Polling stops at a terminal state, resumes for stored non-terminal watches after a restart, and records a failed `sco` call on the watch without stopping it. Each row carries a `description` of at most 500 characters, set by the request, `sco/job-created`, or `configure`, and the console `displayName` read from the job object.
+
+Training curves come from a metric source named by the watch's `metrics: { kind, options? }`, or from `defaultMetricSource`; `configure` with `metrics: null` returns to the default, and a changed source clears the stored curves. The built-in `logs` source parses each log round with its `parsers`: `experiment-logger` reads `metric  value` tables and `[step=N]  key=value` lines, `json-lines` reads JSON objects with a numeric step key, `key-value` reads `step=N loss=0.5` lines, and `regex` reads a pattern whose named groups are the step and the values. Other plugins register sources with `registerMetricSource(kind, provider)`, which returns the disposer; [`cluster-metrics-wandb`](../cluster-metrics-wandb/README.md) registers `wandb`. A read failure or an unregistered kind is recorded as the row's `metricsError` without stopping the poll. A value is kept only when the record carries an integer `step` newer than the stored one.
 
 -----
 
@@ -58,7 +62,8 @@ Mount the service beside the SSP gateway and a `storageDomain` provider, and add
 | Source | Responsibility |
 |---|---|
 | [`src/index.ts`](src/index.ts) | Watch records, polling timers, the call limit, and the `cluster` Remote |
-| [`src/parse.ts`](src/parse.ts) | Job state and times, metric lines, and log tails |
+| [`src/parse.ts`](src/parse.ts) | Job state and times, log parsers, and log tails |
+| [`src/sources.ts`](src/sources.ts) | The metric source provider interface and the built-in `logs` source |
 | [`src/types.ts`](src/types.ts) | Remote rows, details, and error codes |
 
 Watches live in the `cluster_monitor` storage domain keyed by workspace and name, so they survive restarts without a session. Polling runs on Host timers and never enters a model request. A poll that finishes after `unwatch` or disposal writes nothing. Disposal aborts in-flight calls, cancels timers, and waits for running polls before closing the domain.

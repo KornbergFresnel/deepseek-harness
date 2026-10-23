@@ -1004,13 +1004,38 @@ export interface CotTranslationPreferences {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-client-ui-cot-translation -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-cluster-metrics-wandb -->
+<a id="deepseek-aidsh-experimental-cluster-metrics-wandb"></a>
+
+## `@deepseek-ai/dsh-experimental-cluster-metrics-wandb`
+
+- `inject`: `clusterMonitor` · `credentials`
+- `source`: [`packages/experimental/cluster-metrics-wandb/src/index.ts:18`](../packages/experimental/cluster-metrics-wandb/src/index.ts)
+
+```ts config-catalog
+/** API endpoint, credential, run URL hosts, and read limits. */
+export interface Config {
+  /** W&B API origin; `/graphql` is appended. */
+  baseUrl: string
+  /** Credential key holding the W&B API key. */
+  apiKeyEnv: string
+  /** Hosts whose `https://<host>/<entity>/<project>/runs/<id>` URLs in a job log name its run. */
+  runUrlHosts: string[]
+  /** History rows requested per read; W&B samples longer runs down to this count. */
+  samples: number
+  /** Timeout of one API request in milliseconds. */
+  timeoutMs: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-cluster-metrics-wandb -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-cluster-monitor -->
 <a id="deepseek-aidsh-experimental-cluster-monitor"></a>
 
 ## `@deepseek-ai/dsh-experimental-cluster-monitor`
 
 - `inject`: `sco` · `storageDomain`
-- `source`: [`packages/experimental/cluster-monitor/src/index.ts:28`](../packages/experimental/cluster-monitor/src/index.ts)
+- `source`: [`packages/experimental/cluster-monitor/src/index.ts:34`](../packages/experimental/cluster-monitor/src/index.ts)
 
 ```ts config-catalog
 /** Polling cadence, retention, and automatic watching. */
@@ -1029,7 +1054,43 @@ export interface Config {
   describeLength: number
   /** Watch every job that `ctx.sco` creates. */
   watchCreatedJobs: boolean
+  /** Metric source kind of a watch that names none; a plugin other than the monitor must register any kind but `logs`. */
+  defaultMetricSource: string
+  /** Parsers of the `logs` source when a watch names none. */
+  logParsers: ClusterLogParser[]
 }
+
+/**
+ * One way the `logs` source reads metric records from log text.
+ * - `experiment-logger`: rlightning-humanoid `ExperimentLogger` tables (`metric  value`) and `[step=N]  key=value` lines.
+ * - `json-lines`: lines holding one JSON object with an integer step under `stepKey` (default `step`) and numeric metrics.
+ * - `key-value`: lines with `stepKey=N` (or `stepKey: N`) followed by numeric `key=value` or `key: value` pairs.
+ * - `regex`: a JavaScript pattern, compiled with the `u` flag, whose named group `step` captures the step and whose other
+ *   named groups capture metric values named after the group.
+ */
+export type ClusterLogParser =
+  | {
+    /** Parser kind. */
+    readonly kind: 'experiment-logger'
+  }
+  | {
+    /** Parser kind. */
+    readonly kind: 'json-lines'
+    /** Key of the integer step; omitted reads `step`. */
+    readonly stepKey?: string
+  }
+  | {
+    /** Parser kind. */
+    readonly kind: 'key-value'
+    /** Key of the integer step; omitted reads `step`. */
+    readonly stepKey?: string
+  }
+  | {
+    /** Parser kind. */
+    readonly kind: 'regex'
+    /** Pattern with a named group `step`; other named groups name metric values. */
+    readonly pattern: string
+  }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-cluster-monitor -->
 
@@ -1241,7 +1302,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-experimental-sco`
 
 - `inject`: `subprocess`
-- `source`: [`packages/experimental/sco/src/index.ts:20`](../packages/experimental/sco/src/index.ts)
+- `source`: [`packages/experimental/sco/src/index.ts:21`](../packages/experimental/sco/src/index.ts)
 
 ```ts config-catalog
 /** Executable, sco profile selection, workspace and queue defaults, and subprocess limits. */
@@ -1271,7 +1332,7 @@ export interface Config {
 
 - `inject`: `sco` · `storageDomain`
 - `refs`: `ScoFramework` (`@deepseek-ai/dsh-experimental-sco/types`) · `ScoImageType` (`@deepseek-ai/dsh-experimental-sco/types`) · `ScoPriority` (`@deepseek-ai/dsh-experimental-sco/types`)
-- `source`: [`packages/experimental/sco-submit/src/index.ts:22`](../packages/experimental/sco-submit/src/index.ts)
+- `source`: [`packages/experimental/sco-submit/src/index.ts:24`](../packages/experimental/sco-submit/src/index.ts)
 
 ```ts config-catalog
 /** Job templates and the output mount path. */
@@ -1435,7 +1496,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-experimental-tool-sco`
 
 - `inject`: `tools` · `sco`
-- `source`: [`packages/experimental/tool-sco/src/index.ts:16`](../packages/experimental/tool-sco/src/index.ts)
+- `source`: [`packages/experimental/tool-sco/src/index.ts:20`](../packages/experimental/tool-sco/src/index.ts)
 
 ```ts config-catalog
 /** Approval behavior for remote mutations. */

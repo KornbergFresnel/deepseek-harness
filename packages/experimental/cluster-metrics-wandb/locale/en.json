@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Cluster metrics from Weights & Biases",
+    "description": "Draw cluster job training curves from the job's Weights & Biases run."
+  }
+}
