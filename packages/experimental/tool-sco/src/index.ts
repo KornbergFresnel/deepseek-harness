@@ -3,9 +3,10 @@
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-experimental-sco'
-import type { ScoSource, ScoVolume } from '@deepseek-ai/dsh-experimental-sco-submit'
+import type { ScoCallOrigin } from '@deepseek-ai/dsh-experimental-sco'
+import type { ScoSource, ScoVolume, ScoWorkloadSpec } from '@deepseek-ai/dsh-experimental-sco-submit'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import type { PreToolDecision } from '@deepseek-ai/dsh-tools'
+import type { PreToolDecision, ToolRunContext } from '@deepseek-ai/dsh-tools'
 
 /** Cordis plugin name. */
 export const name = 'tool-sco'
@@ -117,6 +118,11 @@ function stringEnv(env: Record<string, unknown> | undefined): Record<string, str
 }
 
 const json = (value: unknown) => [{ type: 'text' as const, text: JSON.stringify(value) }]
+
+/** The calling agent's Session, so job observers can group created jobs by conversation. */
+function originOf(exec: ToolRunContext): ScoCallOrigin {
+  return exec.agent === undefined ? {} : { sessionId: exec.agent.id }
+}
 
 /**
  * Register the SSP job tools and the mutation approval gate.
@@ -238,7 +244,7 @@ export function apply(ctx: Context, config: Config): void {
     async execute(args, exec) {
       const { env, ...rest } = args
       const strings = stringEnv(env)
-      return ctx.sco.createJob({ ...rest, ...strings === undefined ? {} : { env: strings } }, exec.signal)
+      return ctx.sco.createJob({ ...rest, ...strings === undefined ? {} : { env: strings } }, exec.signal, originOf(exec))
     },
     presentCall: args => ({ card: 'generic', title: `sco_job_create ${args.name}${args.dryRun === true ? ' (dry run)' : ''}`, rawInput: args }),
   }))
@@ -311,11 +317,16 @@ export function apply(ctx: Context, config: Config): void {
 function registerSubmissionTools(ctx: Context): void {
   ctx.tools.register(defineTool({
     name: 'sco_sources_list',
-    description: 'List registered data, code, and output sources, configured job templates, and the fixed container path where every job mounts its output directory. Call before sco_job_submit to pick names.',
+    description: 'List registered data, code, and output sources, configured job templates, configurations the user saved from earlier forms, and the fixed container path where every job mounts its output directory. Call before sco_job_submit to pick names, and before sco_config_form to find a saved configuration that fits.',
     parameters: {},
     output: { schema: { type: 'json' }, render: (_args, value) => json(value) },
     async execute() {
-      return { sources: await ctx.scoSubmit.sources(), templates: ctx.scoSubmit.listTemplates(), outputMountPath: ctx.scoSubmit.outputPath }
+      return {
+        sources: await ctx.scoSubmit.sources(),
+        templates: ctx.scoSubmit.listTemplates(),
+        configs: await ctx.scoSubmit.configs(),
+        outputMountPath: ctx.scoSubmit.outputPath,
+      }
     },
     presentCall: args => ({ card: 'generic', title: 'sco_sources_list', kind: 'search', rawInput: args }),
   }))
@@ -407,8 +418,51 @@ function registerSubmissionTools(ctx: Context): void {
     async execute(args, exec) {
       const { env, ...rest } = args
       const strings = stringEnv(env)
-      return ctx.scoSubmit.submit({ ...rest, ...strings === undefined ? {} : { env: strings } }, exec.signal)
+      return ctx.scoSubmit.submit({ ...rest, ...strings === undefined ? {} : { env: strings } }, exec.signal, originOf(exec))
     },
     presentCall: args => ({ card: 'generic', title: `sco_job_submit ${args.name}${args.dryRun === true ? ' (dry run)' : ''}`, rawInput: args }),
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'sco_config_form',
+    description: 'Open an interactive form in the chat where the user sets up an SSP training job or a cloud development machine: image, mounted data, code, and output sources, workspace, queue, machine type, pods, GPUs, CPU, memory, priority, and command. Use it instead of asking for these settings in text. Prefill initial with everything the user already said. The form lets the user load a configuration saved earlier; pass suggested to preselect a saved configuration from sco_sources_list that fits the request. Waits until the user confirms or cancels, then returns the confirmed settings, the configuration loaded, and the name the user saved them under. Submit a confirmed job with sco_job_submit using the returned fields (dryRun first). No sco command creates development machines; report confirmed development machine settings to the user.',
+    parameters: {
+      kind: { type: 'string', required: true, enum: ['job', 'devmachine'], description: 'job: an SSP training job. devmachine: a cloud development machine.' },
+      title: { type: 'string', description: 'Short heading for the form, for example what the job trains.' },
+      suggested: { type: 'string', description: 'Saved configuration name to preselect.' },
+      initial: {
+        type: 'object',
+        additionalProperties: false,
+        description: 'Values to prefill; omit fields the user has not decided.',
+        properties: {
+          image: { type: 'string', description: 'Container image reference.' },
+          imageType: IMAGE_TYPE,
+          code: { type: 'string', description: 'Code source name.' },
+          ref: { type: 'string', description: 'Code ref directory.' },
+          data: { type: 'array', items: { type: 'string' }, description: 'Data source names.' },
+          output: { type: 'string', description: 'Output source name.' },
+          command: { type: 'string', description: 'Startup command.' },
+          env: ENV,
+          ...RESOURCES,
+          queueId: QUEUE_ID,
+          workspace: WORKSPACE,
+        },
+      },
+    },
+    output: { schema: { type: 'json' }, render: (_args, value) => json(value) },
+    async execute(args, exec) {
+      const { env, ...rest } = args.initial ?? {}
+      const strings = stringEnv(env)
+      const initial: ScoWorkloadSpec = { ...rest, ...strings === undefined ? {} : { env: strings } }
+      return ctx.scoSubmit.askForm({
+        callId: exec.callId,
+        ...originOf(exec),
+        kind: args.kind,
+        initial,
+        ...args.title === undefined ? {} : { title: args.title },
+        ...args.suggested === undefined ? {} : { suggested: args.suggested },
+      }, exec.signal)
+    },
+    presentCall: args => ({ card: 'generic', title: `sco_config_form ${args.kind}`, rawInput: args }),
   }))
 }

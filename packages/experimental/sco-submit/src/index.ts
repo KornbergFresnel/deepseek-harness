@@ -6,14 +6,16 @@
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { z as zod } from 'zod'
-import type { ScoAfsVolume, ScoDefaults, ScoJobCreation } from '@deepseek-ai/dsh-experimental-sco'
+import type { ScoAfsVolume, ScoCallOrigin, ScoDefaults, ScoJobCreation } from '@deepseek-ai/dsh-experimental-sco'
+import type { ToolCallId } from '@deepseek-ai/dsh-llm/brand'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import type { Domain } from '@deepseek-ai/dsh-storage-domain'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { machineTypes, mentions, mountPath, QUEUE_ID, queueIds, RESOURCE_FAILURE, resolveSubmission, sourceName, validSource } from './resolve.ts'
 import type {
-  ScoConfigOverview, ScoJobSubmitted, ScoJobTemplate, ScoResolvedSubmission, ScoResourceOptions, ScoResourceOptionsRequest,
-  ScoSource, ScoSourceSaveRequest, ScoSubmission, SubmitScoJobRequest,
+  ScoConfigForm, ScoConfigFormAnswer, ScoConfigFormOutcome, ScoConfigOverview, ScoConfigSaveRequest, ScoJobSubmitted, ScoJobTemplate,
+  ScoResolvedSubmission, ScoResourceOptions, ScoResourceOptionsRequest, ScoSavedConfig, ScoSource, ScoSourceSaveRequest, ScoSubmission,
+  ScoWorkloadSpec, SubmitScoJobRequest,
 } from './types.ts'
 
 export type * from './types.ts'
@@ -74,6 +76,40 @@ const optionsSchema = zod.object({
 
 const defaultsSchema = zod.object({ workspace: zod.string().exactOptional(), queueId: zod.string().exactOptional() })
 
+const count = zod.number().int().nonnegative()
+const specSchema = zod.strictObject({
+  image: zod.string().exactOptional(),
+  imageType: zod.enum(['OFFICIAL', 'PRIVATE', 'THIRD_PARTY']).exactOptional(),
+  code: zod.string().exactOptional(),
+  ref: zod.string().exactOptional(),
+  data: zod.array(zod.string()).exactOptional(),
+  output: zod.string().exactOptional(),
+  command: zod.string().exactOptional(),
+  env: zod.record(zod.string(), zod.string()).exactOptional(),
+  framework: zod.enum(['PYTORCH_DDP', 'MPI', 'RAY_JOB', 'TENSORFLOW_PS', 'FRAMEWORK_CUSTOM']).exactOptional(),
+  podCount: zod.number().int().positive().exactOptional(),
+  gpuCount: count.exactOptional(),
+  cpuCount: count.exactOptional(),
+  memoryGib: count.exactOptional(),
+  machineType: zod.string().exactOptional(),
+  rdmaName: zod.string().exactOptional(),
+  shmSizeGib: count.exactOptional(),
+  priority: zod.enum(['NORMAL', 'HIGH', 'HIGHEST']).exactOptional(),
+  maxAttempts: count.exactOptional(),
+  enableQueuing: zod.boolean().exactOptional(),
+  workspace: zod.string().exactOptional(),
+  queueId: zod.string().exactOptional(),
+})
+
+const savedConfigSchema = zod.object({
+  kind: zod.enum(['job', 'devmachine']),
+  description: zod.string().exactOptional(),
+  spec: specSchema,
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+  lastUsedAt: zod.string().exactOptional(),
+})
+
 const submitDomain = defineDomain({
   name: 'sco_submit',
   version: 1,
@@ -81,6 +117,7 @@ const submitDomain = defineDomain({
     sources: domainTable<string, ScoSource>(sourceSchema),
     resource_options: domainTable<string, ScoResourceOptions>(optionsSchema),
     defaults: domainTable<string, ScoDefaults>(defaultsSchema),
+    configs: domainTable<string, ScoSavedConfig>(savedConfigSchema),
   },
 })
 
@@ -107,6 +144,36 @@ const templateSchema: z<ScoJobTemplate> = z.object({
   enableQueuing: z.boolean(),
 })
 
+/**
+ * Validate workload settings that arrive from model JSON or the browser, dropping blank strings and empty lists.
+ * @param spec - candidate settings.
+ * @returns the settings without blank fields.
+ */
+export function workloadSpec(spec: ScoWorkloadSpec): ScoWorkloadSpec {
+  const parsed = specSchema.safeParse(spec)
+  if (!parsed.success) throw new Error(`sco-submit: invalid workload settings: ${zod.prettifyError(parsed.error)}`)
+  const kept: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(parsed.data)) {
+    if (typeof value === 'string') {
+      if (value.trim() !== '') kept[key] = value.trim()
+    } else if (Array.isArray(value)) {
+      const items = value.map(item => item.trim()).filter(item => item !== '')
+      if (items.length > 0) kept[key] = items
+    } else {
+      kept[key] = value
+    }
+  }
+  // The schema produced every field; only blank strings and empty lists were dropped.
+  const result = kept as ScoWorkloadSpec
+  if (result.queueId !== undefined && !QUEUE_ID.test(result.queueId)) {
+    throw new Error(`sco-submit: queueId "${result.queueId}" must be a full queue resource id (/subscriptions/…/clusters/<cluster>/queues/<queue>)`)
+  }
+  for (const reference of [result.code, result.output, result.data].flat()) {
+    if (reference !== undefined) sourceName('source name in workload settings', reference)
+  }
+  return result
+}
+
 function message(error: unknown): string {
   /* v8 ignore next -- sco and storage failures are Error instances; String() keeps a foreign throw readable. */
   return error instanceof Error ? error.message : String(error)
@@ -130,6 +197,12 @@ export class ScoSubmit extends TypertRemoteService {
   private readonly outputMountPath: string
   private readonly domain: Promise<Domain<typeof submitDomain>>
   private readonly listeners = new Set<() => void>()
+  private readonly forms = new Map<ToolCallId, {
+    form: ScoConfigForm
+    settle: (outcome: ScoConfigFormOutcome) => void
+    fail: (error: Error) => void
+  }>()
+  private readonly formListeners = new Set<() => void>()
 
   /**
    * @param ctx - Host context providing `sco` and `storageDomain`.
@@ -153,10 +226,11 @@ export class ScoSubmit extends TypertRemoteService {
       const saved = domain.table('defaults').get(this.defaultsKey())
       if (saved !== undefined) ctx.sco.setDefaults(saved)
       return async () => {
+        for (const pending of this.forms.values()) pending.fail(new Error('sco-submit disposed'))
         ctx.sco.setDefaults({})
         await domain.close()
       }
-    }, 'sco-submit: open the domain and apply saved defaults; withdraw them and close the domain on disposal')
+    }, 'sco-submit: open the domain and apply saved defaults; fail open forms, withdraw the defaults, and close the domain on disposal')
   }
 
   /**
@@ -256,9 +330,10 @@ export class ScoSubmit extends TypertRemoteService {
    * field refreshes the cached options before the error propagates.
    * @param request - submission.
    * @param signal - cancellation; a cancelled creation may still have been accepted remotely.
+   * @param origin - Session that requested the submission, passed to `createJob`.
    * @returns the merged `TrainingJob` for a dry run, otherwise the created name and CLI output, each with the flags used.
    */
-  async submit(request: SubmitScoJobRequest, signal?: AbortSignal): Promise<ScoSubmission> {
+  async submit(request: SubmitScoJobRequest, signal?: AbortSignal, origin: ScoCallOrigin = {}): Promise<ScoSubmission> {
     const resolved = await this.resolve(request)
     const workspace = this.ctx.sco.workspaceOf(resolved.request)
     const machineType = resolved.request.machineType
@@ -271,7 +346,7 @@ export class ScoSubmit extends TypertRemoteService {
     }
     let creation: ScoJobCreation
     try {
-      creation = await this.ctx.sco.createJob(resolved.request, signal)
+      creation = await this.ctx.sco.createJob(resolved.request, signal, origin)
     } catch (error) {
       if (workspace === undefined || !RESOURCE_FAILURE.test(message(error))) throw error
       try {
@@ -313,6 +388,7 @@ export class ScoSubmit extends TypertRemoteService {
       outputMountPath: this.outputMountPath,
       sources: byName(domain.table('sources').entries()).map(([name, source]) => ({ name, source })),
       templates: byName(Object.entries(this.templates)).map(([name, template]) => ({ name, template })),
+      configs: byName(domain.table('configs').entries()).map(([name, config]) => ({ name, config })),
       ...cached === undefined ? {} : {
         options: {
           workspace: cached.workspace,
@@ -329,25 +405,8 @@ export class ScoSubmit extends TypertRemoteService {
    * @returns complete overviews.
    */
   @Remote({ mode: 'stream' })
-  async *follow(signal: AbortSignal): AsyncIterable<ScoConfigOverview> {
-    let wake = Promise.withResolvers<undefined>()
-    let dirty = true
-    const aborted = (): boolean => signal.aborted
-    const notify = (): void => { dirty = true; wake.resolve(undefined) }
-    this.listeners.add(notify)
-    signal.addEventListener('abort', notify, { once: true })
-    try {
-      while (!aborted()) {
-        if (!dirty) await wake.promise
-        if (aborted()) break
-        wake = Promise.withResolvers<undefined>()
-        dirty = false
-        yield await this.overview()
-      }
-    } finally {
-      this.listeners.delete(notify)
-      signal.removeEventListener('abort', notify)
-    }
+  follow(signal: AbortSignal): AsyncIterable<ScoConfigOverview> {
+    return this.stream(this.listeners, signal, () => this.overview())
   }
 
   /**
@@ -407,8 +466,149 @@ export class ScoSubmit extends TypertRemoteService {
     return this.ctx.sco.listVolumes()
   }
 
+  /**
+   * List saved workload configurations.
+   * @returns configurations by name.
+   */
+  async configs(): Promise<Record<string, ScoSavedConfig>> {
+    return Object.fromEntries((await this.domain).table('configs').entries())
+  }
+
+  /**
+   * Save a workload configuration for later forms to load.
+   * @param request - name, kind, settings, and whether to replace a saved configuration of the same name.
+   * @returns after the configuration is stored.
+   */
+  @Remote
+  async saveConfig(request: ScoConfigSaveRequest): Promise<void> {
+    const name = sourceName('configuration name', request.name.trim())
+    const spec = workloadSpec(request.spec)
+    const table = (await this.domain).table('configs')
+    const existing = table.get(name)
+    if (existing !== undefined && request.replace !== true) throw new Error(`sco-submit: configuration "${name}" already exists`)
+    const now = new Date().toISOString()
+    const description = request.description?.trim() ?? ''
+    await table.put(name, {
+      kind: request.kind,
+      ...description === '' ? {} : { description },
+      spec,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+      ...existing?.lastUsedAt === undefined ? {} : { lastUsedAt: existing.lastUsedAt },
+    })
+    this.changed()
+  }
+
+  /**
+   * Delete a saved workload configuration.
+   * @param name - saved configuration name.
+   * @returns after the configuration is deleted.
+   */
+  @Remote
+  async deleteConfig(name: string): Promise<void> {
+    if (!await (await this.domain).table('configs').delete(name)) throw new Error(`sco-submit: no configuration named "${name}" is saved`)
+    this.changed()
+  }
+
+  /**
+   * Open a configuration form in the chat row of a tool call and wait until the user confirms or cancels it.
+   * @param request - tool call, Session, kind, proposed values, and an optional saved configuration to suggest.
+   * @param signal - the tool call's lifetime; aborting closes the form and rejects with the abort reason.
+   * @returns the confirmed values, with the configuration loaded and the name saved under, or a cancellation.
+   */
+  async askForm(request: Omit<ScoConfigForm, 'openedAt'>, signal: AbortSignal): Promise<ScoConfigFormOutcome> {
+    signal.throwIfAborted()
+    if (this.forms.has(request.callId)) throw new Error(`sco-submit: a configuration form for call ${request.callId} is already open`)
+    const initial = workloadSpec(request.initial)
+    if (request.suggested !== undefined && (await this.domain).table('configs').get(request.suggested) === undefined) {
+      throw new Error(`sco-submit: no configuration named "${request.suggested}" is saved`)
+    }
+    const { promise, resolve, reject } = Promise.withResolvers<ScoConfigFormOutcome>()
+    const abort = (): void => { reject(signal.reason) }
+    signal.addEventListener('abort', abort, { once: true })
+    this.forms.set(request.callId, { form: { ...request, initial, openedAt: new Date().toISOString() }, settle: resolve, fail: reject })
+    this.formsChanged()
+    try {
+      return await promise
+    } finally {
+      signal.removeEventListener('abort', abort)
+      this.forms.delete(request.callId)
+      this.formsChanged()
+    }
+  }
+
+  /**
+   * Follow the open configuration forms: the list now and after each form opens or closes.
+   * @param signal - stream lifetime.
+   * @returns complete form lists in opening order.
+   */
+  @Remote({ mode: 'stream' })
+  followForms(signal: AbortSignal): AsyncIterable<ScoConfigForm[]> {
+    return this.stream(this.formListeners, signal, () => [...this.forms.values()].map(pending => pending.form))
+  }
+
+  /**
+   * Answer an open configuration form. A save request stores the confirmed values first; a failed save leaves the form open.
+   * @param callId - tool call that opened the form.
+   * @param answer - confirmed values with the optional configuration loaded and save name, or a cancellation.
+   * @returns after the form closes.
+   */
+  @Remote
+  async answerForm(callId: ToolCallId, answer: ScoConfigFormAnswer): Promise<void> {
+    const pending = this.forms.get(callId)
+    if (pending === undefined) throw new Error(`sco-submit: no configuration form is open for call ${callId}`)
+    if (answer.kind === 'cancelled') {
+      pending.settle({ kind: 'cancelled' })
+      return
+    }
+    const spec = workloadSpec(answer.spec)
+    const table = (await this.domain).table('configs')
+    if (answer.save !== undefined) {
+      await this.saveConfig({ name: answer.save.name, kind: pending.form.kind, spec, replace: true,
+        ...answer.save.description === undefined ? {} : { description: answer.save.description } })
+    }
+    const loaded = answer.loaded === undefined ? undefined : table.get(answer.loaded)
+    if (answer.loaded !== undefined && loaded !== undefined) {
+      await table.put(answer.loaded, { ...loaded, lastUsedAt: new Date().toISOString() })
+      this.changed()
+    }
+    pending.settle({
+      kind: 'confirmed',
+      workload: pending.form.kind,
+      spec,
+      ...answer.loaded === undefined ? {} : { loaded: answer.loaded },
+      ...answer.save === undefined ? {} : { savedAs: answer.save.name.trim() },
+    })
+  }
+
+  /** Yield `read()` now and after each burst of notifications on `listeners`, until the signal aborts. */
+  private async *stream<T>(listeners: Set<() => void>, signal: AbortSignal, read: () => T | Promise<T>): AsyncIterable<T> {
+    let wake = Promise.withResolvers<undefined>()
+    let dirty = true
+    const aborted = (): boolean => signal.aborted
+    const notify = (): void => { dirty = true; wake.resolve(undefined) }
+    listeners.add(notify)
+    signal.addEventListener('abort', notify, { once: true })
+    try {
+      while (!aborted()) {
+        if (!dirty) await wake.promise
+        if (aborted()) break
+        wake = Promise.withResolvers<undefined>()
+        dirty = false
+        yield await read()
+      }
+    } finally {
+      listeners.delete(notify)
+      signal.removeEventListener('abort', notify)
+    }
+  }
+
   private changed(): void {
     for (const listener of this.listeners) listener()
+  }
+
+  private formsChanged(): void {
+    for (const listener of this.formListeners) listener()
   }
 
   private defaultsKey(): string {

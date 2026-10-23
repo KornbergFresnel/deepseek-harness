@@ -45,7 +45,7 @@ kind: "package-reference"
 | `describeLength` | `32768` | 最近一次任务对象 JSON 文本的保留长度 |
 | `watchCreatedJobs` | `true` | 自动关注 `ctx.sco.createJob` 创建的每个任务 |
 
-`ctx.clusterMonitor` 提供 `list()`、`detail(watchId)`、`watch({ name, workspace? })`、`unwatch(watchId)`、`refresh(watchId)`，以及流 `follow()` 和 `followJob(watchId)`。`watch` 对同一名称和工作空间幂等。每次轮询读取任务对象，并把 `state` 映射为 `pending`、`running`、`succeeded`、`failed`、`stopped` 或 `unknown`；运行期间以及结束时各读取并解析一轮日志。到达终态后停止轮询；重启后恢复已保存的非终态关注；`sco` 调用失败会记录在关注项上，但不会停止轮询。指标来自 rlightning-humanoid 的 `metric  value` 表格和 `[step=N]  key=value` 行；只有带整数 `step` 且比已保存步数更新的记录才会被保留。
+`ctx.clusterMonitor` 提供 `list()`、`detail(watchId)`、`watch({ name, workspace?, sessionId? })`、`unwatch(watchId)`、`refresh(watchId)`，以及流 `follow()` 和 `followJob(watchId)`。`watch` 对同一名称和工作空间幂等。每行带有创建或关注该任务的 Session 的 `sessionId`，来自 `sco/job-created` 事件或请求；之后带 `sessionId` 的调用只会给没有 Session 的关注项补上，不会替换已有值。每次轮询读取任务对象，并把 `state` 映射为 `pending`、`running`、`succeeded`、`failed`、`stopped` 或 `unknown`；运行期间以及结束时各读取并解析一轮日志。到达终态后停止轮询；重启后恢复已保存的非终态关注；`sco` 调用失败会记录在关注项上，但不会停止轮询。指标来自 rlightning-humanoid 的 `metric  value` 表格和 `[step=N]  key=value` 行；只有带整数 `step` 且比已保存步数更新的记录才会被保留。
 
 -----
 

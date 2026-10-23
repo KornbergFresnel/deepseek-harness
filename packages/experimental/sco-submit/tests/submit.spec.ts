@@ -5,11 +5,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import ScoGateway from '@deepseek-ai/dsh-experimental-sco'
 import type { Config as ScoConfig } from '@deepseek-ai/dsh-experimental-sco'
+import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import Storage from '@deepseek-ai/dsh-storage'
 import * as StorageDomain from '@deepseek-ai/dsh-storage-domain'
 import * as StorageJson from '@deepseek-ai/dsh-storage-json'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
-import ScoSubmit from '../src/index.ts'
+import ScoSubmit, { workloadSpec } from '../src/index.ts'
 import type { Config, ScoCodeSource, ScoJobSubmitted, ScoJobTemplate, ScoSource } from '../src/index.ts'
 import { machineTypes, mentions, queueIds, resolveSubmission, validSource } from '../src/resolve.ts'
 import { fakeSco } from '../../sco/tests/fake-sco.ts'
@@ -289,7 +290,7 @@ describe('clusterConfig Remote namespace', () => {
     const first = await stream.next()
     expect(first.value).toEqual({
       profile: 'pjlab', workspace: 'team-a', queueId: '/queues/default', configured: { workspace: 'team-a', queueId: '/queues/default' }, saved: {},
-      outputMountPath: '/outputs', sources: [], templates: [{ name: 'wbt-train', template: TEMPLATES['wbt-train'] }],
+      outputMountPath: '/outputs', sources: [], templates: [{ name: 'wbt-train', template: TEMPLATES['wbt-train'] }], configs: [],
     })
     const pending = stream.next()
     await ctx.scoSubmit.saveSource({ name: 'rlh', source: CODE })
@@ -340,8 +341,108 @@ describe('clusterConfig Remote namespace', () => {
     abort.abort()
     expect(await ctx.scoSubmit.follow(abort.signal)[Symbol.asyncIterator]().next()).toEqual({ done: true, value: undefined })
     expect(await ctx.scoSubmit.overview()).toEqual({
-      configured: {}, saved: {}, outputMountPath: '/outputs', sources: [], templates: [{ name: 'wbt-train', template: TEMPLATES['wbt-train'] }],
+      configured: {}, saved: {}, outputMountPath: '/outputs', sources: [], templates: [{ name: 'wbt-train', template: TEMPLATES['wbt-train'] }], configs: [],
     })
     expect(machineTypes([{ spec_code: 'a' }, { nested: { machine_type: 'b', other: 'c' } }, { spec_code: 'a' }, { spec_code: 1 }, null])).toEqual(['a', 'b'])
+  })
+})
+
+describe('saved configurations and configuration forms', () => {
+  const QUEUE = '/subscriptions/s/resourceGroups/r/regions/cn/clusters/c1/queues/gpu-a'
+
+  async function nextForms(ctx: Context) {
+    const lifetime = new AbortController()
+    const forms = (await ctx.scoSubmit.followForms(lifetime.signal)[Symbol.asyncIterator]().next()).value
+    lifetime.abort()
+    return forms ?? []
+  }
+
+  it('trims workload settings and rejects invalid ones', () => {
+    expect(workloadSpec({ image: ' img ', command: '  ', data: [' motion ', ''], env: { A: '1' }, gpuCount: 0, queueId: QUEUE })).toEqual({
+      image: 'img', data: ['motion'], env: { A: '1' }, gpuCount: 0, queueId: QUEUE,
+    })
+    expect(workloadSpec({ data: [' '] })).toEqual({})
+    expect(() => workloadSpec({ gpuCount: -1 })).toThrow('invalid workload settings')
+    expect(() => workloadSpec({ podCount: 0 })).toThrow('invalid workload settings')
+    expect(() => workloadSpec({ queueId: 'gpu-a' })).toThrow('queueId "gpu-a" must be a full queue resource id')
+    expect(() => workloadSpec({ code: 'Bad_Name' })).toThrow('source name in workload settings "Bad_Name"')
+  })
+
+  it('saves, replaces, lists, and deletes configurations that survive a restart', async () => {
+    const first = await boot()
+    const abort = new AbortController()
+    const stream = first.ctx.scoSubmit.follow(abort.signal)[Symbol.asyncIterator]()
+    await stream.next()
+    await first.ctx.scoSubmit.saveConfig({ name: ' wbt-8gpu ', kind: 'job', description: ' WBT ', spec: { image: 'img', gpuCount: 8 } })
+    expect((await stream.next()).value).toMatchObject({ configs: [{ name: 'wbt-8gpu', config: { kind: 'job', description: 'WBT', spec: { image: 'img', gpuCount: 8 } } }] })
+    await expect(first.ctx.scoSubmit.saveConfig({ name: 'wbt-8gpu', kind: 'job', spec: {} })).rejects.toThrow('configuration "wbt-8gpu" already exists')
+    await expect(first.ctx.scoSubmit.saveConfig({ name: 'Bad Name', kind: 'job', spec: {} })).rejects.toThrow('configuration name "Bad Name"')
+    const created = (await first.ctx.scoSubmit.configs())['wbt-8gpu']!
+    await new Promise(resolve => setTimeout(resolve, 5))
+    await first.ctx.scoSubmit.saveConfig({ name: 'wbt-8gpu', kind: 'job', description: ' ', spec: { image: 'img2' }, replace: true })
+    const replaced = (await first.ctx.scoSubmit.configs())['wbt-8gpu']!
+    expect(replaced).toEqual({ kind: 'job', spec: { image: 'img2' }, createdAt: created.createdAt, updatedAt: expect.any(String) })
+    expect(replaced.updatedAt > created.updatedAt).toBe(true)
+    await first.ctx.scoSubmit.saveConfig({ name: 'dev-a100', kind: 'devmachine', spec: { gpuCount: 1 } })
+    abort.abort()
+    contexts.splice(contexts.indexOf(first.ctx), 1)
+    await first.ctx.fiber.dispose()
+
+    const second = await boot({ root: first.root, fake: first.fake })
+    expect(Object.keys(await second.ctx.scoSubmit.configs())).toEqual(['wbt-8gpu', 'dev-a100'])
+    expect((await second.ctx.scoSubmit.overview()).configs.map(entry => entry.name)).toEqual(['dev-a100', 'wbt-8gpu'])
+    await second.ctx.scoSubmit.deleteConfig('dev-a100')
+    await expect(second.ctx.scoSubmit.deleteConfig('dev-a100')).rejects.toThrow('no configuration named "dev-a100" is saved')
+    expect(Object.keys(await second.ctx.scoSubmit.configs())).toEqual(['wbt-8gpu'])
+  })
+
+  it('keeps a form open until it is answered, saves on request, and records the configuration it loaded', async () => {
+    const { ctx } = await boot()
+    await ctx.scoSubmit.saveConfig({ name: 'wbt-8gpu', kind: 'job', spec: { image: 'img', gpuCount: 8 } })
+    expect(await nextForms(ctx)).toEqual([])
+    const callId = ToolCallId('call-1')
+    const lifetime = new AbortController()
+    const answer = ctx.scoSubmit.askForm({ callId, kind: 'job', initial: { image: ' img ' }, suggested: 'wbt-8gpu' }, lifetime.signal)
+    await vi.waitFor(async () => { expect(await nextForms(ctx)).toHaveLength(1) })
+    expect(await nextForms(ctx)).toEqual([{ callId, kind: 'job', initial: { image: 'img' }, suggested: 'wbt-8gpu', openedAt: expect.any(String) }])
+    await expect(ctx.scoSubmit.askForm({ callId, kind: 'job', initial: {} }, lifetime.signal)).rejects.toThrow('already open')
+    await expect(ctx.scoSubmit.answerForm(callId, { kind: 'confirmed', spec: {}, save: { name: 'Bad Name' } })).rejects.toThrow('configuration name "Bad Name"')
+    expect(await nextForms(ctx)).toHaveLength(1)
+    await ctx.scoSubmit.answerForm(callId, {
+      kind: 'confirmed', spec: { image: 'img', gpuCount: 4, queueId: QUEUE }, loaded: 'wbt-8gpu', save: { name: ' wbt-4gpu ', description: '4 GPUs' },
+    })
+    expect(await answer).toEqual({ kind: 'confirmed', workload: 'job', spec: { image: 'img', gpuCount: 4, queueId: QUEUE }, loaded: 'wbt-8gpu', savedAs: 'wbt-4gpu' })
+    const configs = await ctx.scoSubmit.configs()
+    expect(configs['wbt-8gpu']!.lastUsedAt).toEqual(expect.any(String))
+    await ctx.scoSubmit.saveConfig({ name: 'wbt-8gpu', kind: 'job', spec: { image: 'img', gpuCount: 6 }, replace: true })
+    expect((await ctx.scoSubmit.configs())['wbt-8gpu']!.lastUsedAt).toBe(configs['wbt-8gpu']!.lastUsedAt)
+    expect(configs['wbt-4gpu']).toMatchObject({ kind: 'job', description: '4 GPUs', spec: { gpuCount: 4 } })
+    expect(await nextForms(ctx)).toEqual([])
+
+    const plain = ToolCallId('call-2')
+    const plainAnswer = ctx.scoSubmit.askForm({ callId: plain, kind: 'devmachine', initial: {} }, lifetime.signal)
+    await vi.waitFor(async () => { expect(await nextForms(ctx)).toHaveLength(1) })
+    await ctx.scoSubmit.answerForm(plain, { kind: 'confirmed', spec: { gpuCount: 1 }, loaded: 'deleted-meanwhile' })
+    expect(await plainAnswer).toEqual({ kind: 'confirmed', workload: 'devmachine', spec: { gpuCount: 1 }, loaded: 'deleted-meanwhile' })
+  })
+
+  it('rejects forms whose call is cancelled, already cancelled, or outlives the service', async () => {
+    const { ctx, submit } = await boot()
+    const dead = new AbortController()
+    dead.abort(new Error('already stopped'))
+    await expect(ctx.scoSubmit.askForm({ callId: ToolCallId('dead'), kind: 'job', initial: {} }, dead.signal)).rejects.toThrow('already stopped')
+    await expect(ctx.scoSubmit.askForm({ callId: ToolCallId('x'), kind: 'job', initial: {}, suggested: 'absent' }, new AbortController().signal))
+      .rejects.toThrow('no configuration named "absent" is saved')
+    await expect(ctx.scoSubmit.askForm({ callId: ToolCallId('y'), kind: 'job', initial: { gpuCount: -1 } }, new AbortController().signal))
+      .rejects.toThrow('invalid workload settings')
+    const lifetime = new AbortController()
+    const cancelled = ctx.scoSubmit.askForm({ callId: ToolCallId('cancel'), kind: 'job', initial: {} }, lifetime.signal)
+    lifetime.abort(new Error('turn stopped'))
+    await expect(cancelled).rejects.toThrow('turn stopped')
+    const orphan = ctx.scoSubmit.askForm({ callId: ToolCallId('orphan'), kind: 'job', initial: {} }, new AbortController().signal)
+    const failed = expect(orphan).rejects.toThrow('sco-submit disposed')
+    await vi.waitFor(async () => { expect(await nextForms(ctx)).toHaveLength(1) })
+    await submit.dispose()
+    await failed
   })
 })

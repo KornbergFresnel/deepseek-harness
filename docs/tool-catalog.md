@@ -45,7 +45,7 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`, `owning Agent session` | `tool/call`, `todo/write`, `tool/result` | - | todo_write is session-owned state; UIs render the latest todo/write event as a checklist. `allowParallelInProgress` is required with no default, so the catalog states its choice: `true`, whose description invites several `in_progress` items. A deployment choosing `false` receives the same tool with a description asking for exactly one active task. |
 | `@deepseek-ai/dsh-tool-working-directory` | `working_directory` | `ctx.tools`, `ctx.workingDirectory` | `tool/call`, `working-directory/change`, `user context for directory changes`, `tool/result` | - | Reads or changes the calling Session directory. Existing shells and processes retain their own directories; origin metadata and permission roots stay fixed. |
 | `@deepseek-ai/dsh-experimental-tool-worktree` | `create_worktree` | `ctx.tools`, `ctx.worktrees`, `a calling Agent` | `tool/call`, `Git branch and checkout`, `working-directory/change`, `tool/result` | - | Explicit experimental composition only. Creates a new branch and checkout from a pinned local commit under existing write permissions, then changes the Session directory. Leaving retains the branch and checkout. |
-| `@deepseek-ai/dsh-experimental-tool-sco` | `sco_job_create`, `sco_job_describe`, `sco_job_list`, `sco_job_logs`, `sco_job_stop`, `sco_job_submit`, `sco_job_workers`, `sco_resource_options`, `sco_source_add`, `sco_source_remove`, `sco_source_update`, `sco_sources_list`, `sco_volume_quota`, `sco_volumes_list` | `ctx.tools`, `ctx.sco`, `ctx.scoSubmit for sources and template submission`, `ctx.approval for submission and stop` | `tool/call`, `SenseCore SSP training jobs`, `registered sources`, `tool/result` | - | Explicit experimental composition only. Runs the local sco CLI; submission without dryRun and stop ask the user unless confirmMutations is false. Source, resource-option, and template-submission tools appear only while sco-submit is mounted. |
+| `@deepseek-ai/dsh-experimental-tool-sco` | `sco_config_form`, `sco_job_create`, `sco_job_describe`, `sco_job_list`, `sco_job_logs`, `sco_job_stop`, `sco_job_submit`, `sco_job_workers`, `sco_resource_options`, `sco_source_add`, `sco_source_remove`, `sco_source_update`, `sco_sources_list`, `sco_volume_quota`, `sco_volumes_list` | `ctx.tools`, `ctx.sco`, `ctx.scoSubmit for sources and template submission`, `ctx.approval for submission and stop` | `tool/call`, `SenseCore SSP training jobs`, `registered sources`, `tool/result` | - | Explicit experimental composition only. Runs the local sco CLI; submission without dryRun and stop ask the user unless confirmMutations is false. Source, resource-option, and template-submission tools appear only while sco-submit is mounted. |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`, `ctx.workflowEngine`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents the script children)` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-workspace-dependencies` | `load_workspace_dependencies` | `ctx.tools` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`, `web_search` | `ctx.tools`, `ctx.web`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps. |
@@ -2665,6 +2665,148 @@ Explicit experimental composition only. Creates a new branch and checkout from a
 
 ## `@deepseek-ai/dsh-experimental-tool-sco`
 
+### `sco_config_form`
+
+Open an interactive form in the chat where the user sets up an SSP training job or a cloud development machine: image, mounted data, code, and output sources, workspace, queue, machine type, pods, GPUs, CPU, memory, priority, and command. Use it instead of asking for these settings in text. Prefill initial with everything the user already said. The form lets the user load a configuration saved earlier; pass suggested to preselect a saved configuration from sco_sources_list that fits the request. Waits until the user confirms or cancels, then returns the confirmed settings, the configuration loaded, and the name the user saved them under. Submit a confirmed job with sco_job_submit using the returned fields (dryRun first). No sco command creates development machines; report confirmed development machine settings to the user.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "kind": {
+      "type": "string",
+      "description": "job: an SSP training job. devmachine: a cloud development machine.",
+      "enum": [
+        "job",
+        "devmachine"
+      ]
+    },
+    "title": {
+      "type": "string",
+      "description": "Short heading for the form, for example what the job trains."
+    },
+    "suggested": {
+      "type": "string",
+      "description": "Saved configuration name to preselect."
+    },
+    "initial": {
+      "type": "object",
+      "description": "Values to prefill; omit fields the user has not decided.",
+      "additionalProperties": false,
+      "properties": {
+        "image": {
+          "type": "string",
+          "description": "Container image reference."
+        },
+        "imageType": {
+          "type": "string",
+          "enum": [
+            "OFFICIAL",
+            "PRIVATE",
+            "THIRD_PARTY"
+          ]
+        },
+        "code": {
+          "type": "string",
+          "description": "Code source name."
+        },
+        "ref": {
+          "type": "string",
+          "description": "Code ref directory."
+        },
+        "data": {
+          "type": "array",
+          "description": "Data source names.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "output": {
+          "type": "string",
+          "description": "Output source name."
+        },
+        "command": {
+          "type": "string",
+          "description": "Startup command."
+        },
+        "env": {
+          "type": "object",
+          "description": "Environment variables as string values.",
+          "additionalProperties": true
+        },
+        "framework": {
+          "type": "string",
+          "description": "Defaults to PYTORCH_DDP.",
+          "enum": [
+            "PYTORCH_DDP",
+            "MPI",
+            "RAY_JOB",
+            "TENSORFLOW_PS",
+            "FRAMEWORK_CUSTOM"
+          ]
+        },
+        "podCount": {
+          "type": "integer",
+          "description": "Pods. Defaults to 1."
+        },
+        "gpuCount": {
+          "type": "integer",
+          "description": "GPUs per pod. Defaults to 0."
+        },
+        "cpuCount": {
+          "type": "integer",
+          "description": "CPU cores per pod."
+        },
+        "memoryGib": {
+          "type": "integer",
+          "description": "Memory per pod in GiB."
+        },
+        "machineType": {
+          "type": "string",
+          "description": "Queue machine type code; comma-separate several."
+        },
+        "rdmaName": {
+          "type": "string"
+        },
+        "shmSizeGib": {
+          "type": "integer",
+          "description": "/dev/shm per pod in GiB, below memoryGib."
+        },
+        "priority": {
+          "type": "string",
+          "enum": [
+            "NORMAL",
+            "HIGH",
+            "HIGHEST"
+          ]
+        },
+        "maxAttempts": {
+          "type": "integer",
+          "description": "Retries after failure."
+        },
+        "enableQueuing": {
+          "type": "boolean",
+          "description": "Wait in queue when quota is insufficient."
+        },
+        "queueId": {
+          "type": "string",
+          "description": "Full queue resource id. Omit to use the configured default."
+        },
+        "workspace": {
+          "type": "string",
+          "description": "SSP workspace name. Omit to use the configured default."
+        }
+      }
+    }
+  },
+  "required": [
+    "kind"
+  ]
+}
+```
+
+Source: [`packages/experimental/tool-sco/src/index.ts`](../packages/experimental/tool-sco/src/index.ts)
+
 ### `sco_job_create`
 
 Submit a SenseCore SSP training job. Run with dryRun first to validate and see the merged TrainingJob; a real submission asks the user and fails if the name exists. GPU jobs need machineType; CPU-only jobs need cpuCount and memoryGib.
@@ -3292,7 +3434,7 @@ Source: [`packages/experimental/tool-sco/src/index.ts`](../packages/experimental
 
 ### `sco_sources_list`
 
-List registered data, code, and output sources, configured job templates, and the fixed container path where every job mounts its output directory. Call before sco_job_submit to pick names.
+List registered data, code, and output sources, configured job templates, configurations the user saved from earlier forms, and the fixed container path where every job mounts its output directory. Call before sco_job_submit to pick names, and before sco_config_form to find a saved configuration that fits.
 
 ```json
 {

@@ -46,6 +46,14 @@ export const zh = {
   'logs.error': '读取日志失败：{message}',
   'describe.title': '任务对象（describe）',
   'action.failed': '操作失败：{message}',
+  'session.tab': '本会话作业',
+  'session.guideDescription': '这个对话提交的集群作业和训练进度',
+  'session.empty': '这个对话还没有提交集群作业。agent 提交的任务会自动出现在这里。',
+  'session.summary': '{total} 个作业 · {running} 个运行中 · {pending} 个排队',
+  'session.more': '还有 {count} 个作业',
+  'session.open': '查看全部',
+  'session.back': '返回列表',
+  'session.aria': '本会话的集群作业',
 } as const
 
 /** Message key of this namespace. */
@@ -94,4 +102,12 @@ export const en: Record<ClusterMonitorKey, string> = {
   'logs.error': 'Could not read logs: {message}',
   'describe.title': 'Job object (describe)',
   'action.failed': 'Action failed: {message}',
+  'session.tab': 'Session jobs',
+  'session.guideDescription': 'Cluster jobs this conversation submitted and their training progress',
+  'session.empty': 'This conversation has not submitted cluster jobs yet. Jobs the agent submits appear here.',
+  'session.summary': '{total} jobs · {running} running · {pending} pending',
+  'session.more': '{count} more jobs',
+  'session.open': 'View all',
+  'session.back': 'Back to list',
+  'session.aria': 'Cluster jobs of this Session',
 }

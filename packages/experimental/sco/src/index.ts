@@ -10,7 +10,8 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { createArgv, jobName, listArgv, logsArgv, resourceName } from './argv.ts'
 import { AFS_VOLUME_RESOURCE, parseResourcePage, parseVolumes } from './volumes.ts'
 import type {
-  CreateScoJobRequest, ListScoJobsRequest, ScoAfsVolume, ReadScoJobLogsRequest, ScoJobCreated, ScoJobCreation, ScoJobLogs, ScoJobStop,
+  CreateScoJobRequest, ListScoJobsRequest, ScoCallOrigin, ScoAfsVolume, ReadScoJobLogsRequest, ScoJobCreated, ScoJobCreation,
+  ScoJobLogs, ScoJobStop,
   ScoDefaults, ScoWorkspaceRequest,
 } from './types.ts'
 
@@ -156,15 +157,20 @@ export class ScoGateway extends Service {
    * Creation is not idempotent: an existing name fails in the CLI.
    * @param request - job specification.
    * @param signal - cancellation; a cancelled creation may still have been accepted remotely.
+   * @param origin - Session that requested the creation, copied into `sco/job-created`.
    * @returns the merged `TrainingJob` for a dry run, otherwise the created name and CLI output.
    * A real creation emits `sco/job-created` after the CLI succeeds.
    */
-  async createJob(request: CreateScoJobRequest, signal?: AbortSignal): Promise<ScoJobCreation> {
+  async createJob(request: CreateScoJobRequest, signal?: AbortSignal, origin: ScoCallOrigin = {}): Promise<ScoJobCreation> {
     const argv = [...createArgv(request, request.queueId ?? this.queueId), ...this.workspaceArgv(request)]
     if (request.dryRun === true) return { kind: 'dry-run', job: await this.json(JOBS, argv, signal) }
     const result = await this.run(JOBS, argv, signal)
     const workspace = this.workspaceOf(request)
-    this.ctx.emit('sco/job-created', { name: request.name, ...workspace === undefined ? {} : { workspace } })
+    this.ctx.emit('sco/job-created', {
+      name: request.name,
+      ...workspace === undefined ? {} : { workspace },
+      ...origin.sessionId === undefined ? {} : { sessionId: origin.sessionId },
+    })
     return { kind: 'created', name: request.name, output: result.stdout.trim() }
   }
 
