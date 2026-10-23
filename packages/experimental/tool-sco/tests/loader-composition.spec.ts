@@ -276,7 +276,8 @@ describe('configuration forms through real Loader composition', () => {
     for (let attempt = 0; attempt < 200; attempt++) {
       const lifetime = new AbortController()
       const iterator = ctx.scoSubmit.followForms(lifetime.signal)[Symbol.asyncIterator]()
-      const forms: readonly ScoConfigForm[] = (await iterator.next()).value ?? []
+      const next = await iterator.next()
+      const forms: readonly ScoConfigForm[] = next.done === true ? [] : next.value
       lifetime.abort()
       const form = forms.find(candidate => candidate.callId === callId)
       if (form !== undefined) return form

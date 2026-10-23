@@ -352,9 +352,9 @@ describe('saved configurations and configuration forms', () => {
 
   async function nextForms(ctx: Context) {
     const lifetime = new AbortController()
-    const forms = (await ctx.scoSubmit.followForms(lifetime.signal)[Symbol.asyncIterator]().next()).value
+    const next = await ctx.scoSubmit.followForms(lifetime.signal)[Symbol.asyncIterator]().next()
     lifetime.abort()
-    return forms ?? []
+    return next.done === true ? [] : next.value
   }
 
   it('trims workload settings and rejects invalid ones', () => {
@@ -381,7 +381,7 @@ describe('saved configurations and configuration forms', () => {
     await new Promise(resolve => setTimeout(resolve, 5))
     await first.ctx.scoSubmit.saveConfig({ name: 'wbt-8gpu', kind: 'job', description: ' ', spec: { image: 'img2' }, replace: true })
     const replaced = (await first.ctx.scoSubmit.configs())['wbt-8gpu']!
-    expect(replaced).toEqual({ kind: 'job', spec: { image: 'img2' }, createdAt: created.createdAt, updatedAt: expect.any(String) })
+    expect(replaced).toEqual({ kind: 'job', spec: { image: 'img2' }, createdAt: created.createdAt, updatedAt: expect.any(String) as string })
     expect(replaced.updatedAt > created.updatedAt).toBe(true)
     await first.ctx.scoSubmit.saveConfig({ name: 'dev-a100', kind: 'devmachine', spec: { gpuCount: 1 } })
     abort.abort()
@@ -404,7 +404,7 @@ describe('saved configurations and configuration forms', () => {
     const lifetime = new AbortController()
     const answer = ctx.scoSubmit.askForm({ callId, kind: 'job', initial: { image: ' img ' }, suggested: 'wbt-8gpu' }, lifetime.signal)
     await vi.waitFor(async () => { expect(await nextForms(ctx)).toHaveLength(1) })
-    expect(await nextForms(ctx)).toEqual([{ callId, kind: 'job', initial: { image: 'img' }, suggested: 'wbt-8gpu', openedAt: expect.any(String) }])
+    expect(await nextForms(ctx)).toEqual([{ callId, kind: 'job', initial: { image: 'img' }, suggested: 'wbt-8gpu', openedAt: expect.any(String) as string }])
     await expect(ctx.scoSubmit.askForm({ callId, kind: 'job', initial: {} }, lifetime.signal)).rejects.toThrow('already open')
     await expect(ctx.scoSubmit.answerForm(callId, { kind: 'confirmed', spec: {}, save: { name: 'Bad Name' } })).rejects.toThrow('configuration name "Bad Name"')
     expect(await nextForms(ctx)).toHaveLength(1)

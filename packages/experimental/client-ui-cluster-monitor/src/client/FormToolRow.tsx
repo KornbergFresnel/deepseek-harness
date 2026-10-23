@@ -63,7 +63,7 @@ export function formOutcome(text: string): ScoConfigFormOutcome | null {
   return {
     kind: 'confirmed',
     workload: value.workload === 'devmachine' ? 'devmachine' : 'job',
-    spec: spec as ScoWorkloadSpec,
+    spec,
     ...typeof value.loaded === 'string' ? { loaded: value.loaded } : {},
     ...typeof value.savedAs === 'string' ? { savedAs: value.savedAs } : {},
   }

@@ -78,7 +78,7 @@ export function specOf(
   }
   if (Object.keys(env).length > 0) spec.env = env
   if (draft.enableQueuing && keep('enableQueuing')) spec.enableQueuing = true
-  return { ok: true, spec: spec as ScoWorkloadSpec }
+  return { ok: true, spec }
 }
 
 /** Summary label key of each settings field, in display order. */
