@@ -2,6 +2,8 @@ import { rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
+import { brandString } from '@deepseek-ai/dsh-brand'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import ScoGateway from '../src/index.ts'
 import type { Config, CreateScoJobRequest } from '../src/index.ts'
@@ -50,8 +52,8 @@ describe('SSP job operations through the sco CLI', () => {
     await ctx.sco.listWorkers('job-wbt')
     await ctx.sco.readLogs('job-wbt')
     await ctx.sco.stopJobs(['job-wbt'])
-    await ctx.sco.createJob({ name: 'job-wbt', image: 'img', args: 'run' })
-    expect(created).toEqual([{ name: 'job-wbt' }])
+    await ctx.sco.createJob({ name: 'job-wbt', image: 'img', args: 'run' }, undefined, { sessionId: brandString<SessionId>('session-1') })
+    expect(created).toEqual([{ name: 'job-wbt', sessionId: 'session-1' }])
     expect(await fake.calls()).toEqual([
       ['ssp', 'jobs', 'list', '--format=json'],
       ['ssp', 'jobs', 'describe', 'job-wbt', '--format=json'],

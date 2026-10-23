@@ -8226,6 +8226,9 @@ importers:
       '@deepseek-ai/dsh-api-remotes':
         specifier: workspace:*
         version: link:../../api/remotes
+      '@deepseek-ai/dsh-brand':
+        specifier: workspace:*
+        version: link:../../util/brand
       '@deepseek-ai/dsh-client-locale':
         specifier: workspace:*
         version: link:../../client/locale
@@ -8244,12 +8247,21 @@ importers:
       '@deepseek-ai/dsh-client-ui-renderer':
         specifier: workspace:*
         version: link:../../client/ui-renderer
+      '@deepseek-ai/dsh-client-ui-session':
+        specifier: workspace:*
+        version: link:../../client/ui-session
       '@deepseek-ai/dsh-client-ui-sidebar':
         specifier: workspace:*
         version: link:../../client/ui-sidebar
+      '@deepseek-ai/dsh-client-ui-sidebar-right':
+        specifier: workspace:*
+        version: link:../../client/ui-sidebar-right
       '@deepseek-ai/dsh-client-ui-slots':
         specifier: workspace:*
         version: link:../../client/ui-slots
+      '@deepseek-ai/dsh-client-ui-tool':
+        specifier: workspace:*
+        version: link:../../client/ui-tool
       '@deepseek-ai/dsh-experimental-cluster-monitor':
         specifier: workspace:*
         version: link:../cluster-monitor
@@ -8259,6 +8271,12 @@ importers:
       '@deepseek-ai/dsh-experimental-sco-submit':
         specifier: workspace:*
         version: link:../sco-submit
+      '@deepseek-ai/dsh-llm':
+        specifier: workspace:*
+        version: link:../../llm/llm
+      '@deepseek-ai/dsh-session':
+        specifier: workspace:*
+        version: link:../../core/session
       '@deepseek-ai/dsh-typert-protocol':
         specifier: workspace:*
         version: link:../../typert/protocol
@@ -8492,6 +8510,9 @@ importers:
       '@deepseek-ai/dsh-experimental-sco':
         specifier: workspace:*
         version: link:../sco
+      '@deepseek-ai/dsh-session':
+        specifier: workspace:*
+        version: link:../../core/session
       '@deepseek-ai/dsh-storage':
         specifier: workspace:*
         version: link:../../storage/storage
@@ -9172,6 +9193,12 @@ importers:
       '@deepseek-ai/cordis':
         specifier: workspace:~
         version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-brand':
+        specifier: workspace:*
+        version: link:../../util/brand
+      '@deepseek-ai/dsh-session':
+        specifier: workspace:*
+        version: link:../../core/session
       '@deepseek-ai/dsh-subprocess':
         specifier: workspace:*
         version: link:../../subprocess/subprocess
@@ -9197,6 +9224,12 @@ importers:
       '@deepseek-ai/dsh-experimental-sco':
         specifier: workspace:*
         version: link:../sco
+      '@deepseek-ai/dsh-llm':
+        specifier: workspace:*
+        version: link:../../llm/llm
+      '@deepseek-ai/dsh-session':
+        specifier: workspace:*
+        version: link:../../core/session
       '@deepseek-ai/dsh-storage':
         specifier: workspace:*
         version: link:../../storage/storage

@@ -6,6 +6,7 @@ import { z as zod } from 'zod'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type {} from '@deepseek-ai/dsh-experimental-sco'
 import type { ScoJobCreated } from '@deepseek-ai/dsh-experimental-sco'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import type { Domain } from '@deepseek-ai/dsh-storage-domain'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
@@ -48,6 +49,7 @@ const watchRecordSchema = zod.object({
   id: zod.string(),
   name: zod.string(),
   workspace: zod.string().optional(),
+  sessionId: zod.string().optional(),
   origin: zod.enum(['created', 'manual']),
   phase: phaseSchema,
   rawState: zod.string().nullable(),
@@ -105,6 +107,7 @@ function row(record: WatchRecord): ClusterWatchRow {
     id: brandString<ClusterWatchId>(record.id),
     name: record.name,
     ...record.workspace === undefined ? {} : { workspace: record.workspace },
+    ...record.sessionId === undefined ? {} : { sessionId: brandString<SessionId>(record.sessionId) },
     origin: record.origin,
     phase: record.phase,
     rawState: record.rawState,
@@ -229,7 +232,8 @@ export default class ClusterMonitor extends TypertRemoteService {
 
   /**
    * Start watching a job, or return the existing watch of the same job and workspace.
-   * @param request - job name and optional workspace.
+   * A Session named by the request attaches to an existing watch that has none.
+   * @param request - job name, optional workspace, and optional Session.
    * @returns the watch row.
    */
   @Remote
@@ -303,11 +307,20 @@ export default class ClusterMonitor extends TypertRemoteService {
     const domain = await this.domain
     const key = watchKey(name, workspace)
     const existing = this.watches.get(key)
-    if (existing !== undefined) return existing
+    if (existing !== undefined) {
+      if (request.sessionId !== undefined && existing.record.sessionId === undefined) {
+        const attached: WatchRecord = { ...existing.record, sessionId: request.sessionId }
+        await domain.table('watches').put(key, attached)
+        existing.record = attached
+        this.notify()
+      }
+      return existing
+    }
     const record: WatchRecord = {
       id: `cw-${randomUUID()}`,
       name,
       ...workspace === undefined ? {} : { workspace },
+      ...request.sessionId === undefined ? {} : { sessionId: request.sessionId },
       origin,
       phase: 'unknown',
       rawState: null,

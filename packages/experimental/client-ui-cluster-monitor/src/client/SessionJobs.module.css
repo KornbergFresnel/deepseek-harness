@@ -1,0 +1,132 @@
+.tab {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  min-height: 0;
+  padding: 12px;
+  overflow: auto;
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.muted {
+  margin: 0;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.summary {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row,
+.more,
+.back {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 8px;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.row:hover,
+.more:hover,
+.back:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.more,
+.back {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+}
+
+.back {
+  width: auto;
+  align-self: flex-start;
+}
+
+.rowTop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.detail {
+  min-height: 0;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 14px;
+  background: var(--dsw-alias-bg-base);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.cardHeading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 2px 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cardText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.cardTitle {
+  font-weight: 500;
+}
+
+.titleIcon {
+  margin-right: 6px;
+  vertical-align: -3px;
+}

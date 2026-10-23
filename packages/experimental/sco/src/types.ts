@@ -1,5 +1,6 @@
 /** Request and result records for SenseCore SSP training-job operations. */
 
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 
 /** SSP training frameworks accepted by `sco ssp jobs create --framework`. */
@@ -123,12 +124,20 @@ export interface ScoJobStop {
   output: string
 }
 
+/** Caller of a mutating operation, carried to observers so they can group jobs by conversation. */
+export interface ScoCallOrigin {
+  /** Session whose agent requested the operation; absent for calls made outside a Session. */
+  sessionId?: SessionId
+}
+
 /** A job the CLI accepted for creation. */
 export interface ScoJobCreated {
   /** Created job name. */
   name: string
   /** Workspace named on the command line; absent when the sco profile supplied it. */
   workspace?: string
+  /** Session whose agent created the job; absent for creations made outside a Session. */
+  sessionId?: SessionId
 }
 
 /** One AFS volume from `sco afs volumes list --format=json`; absent fields were missing or empty in the CLI output. */

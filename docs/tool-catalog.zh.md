@@ -49,7 +49,7 @@
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`、`owning Agent session` | `tool/call`、`todo/write`、`tool/result` | - | todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为检查清单。`allowParallelInProgress` 是没有默认值的必填项，因此本目录明确选择 `true`，对应描述允许同时存在多个 `in_progress` 项。选择 `false` 的部署会获得同一工具，但描述会要求只能有 1 个活动任务。 |
 | `@deepseek-ai/dsh-tool-working-directory` | `working_directory` | `ctx.tools`, `ctx.workingDirectory` | `tool/call`, `working-directory/change`, `user context for directory changes`, `tool/result` | - | 读取或改变调用方 Session 的目录。已有 shell 和进程保留自己的目录；原始元数据和权限根目录保持不变。 |
 | `@deepseek-ai/dsh-experimental-tool-worktree` | `create_worktree` | `ctx.tools`, `ctx.worktrees`, `a calling Agent` | `tool/call`, `Git branch and checkout`, `working-directory/change`, `tool/result` | - | 仅通过显式实验组合加载。在现有写权限下从固定的本地提交创建新分支与检出目录，再改变 Session 工作目录。离开时保留分支与检出目录。 |
-| `@deepseek-ai/dsh-experimental-tool-sco` | `sco_job_create`, `sco_job_describe`, `sco_job_list`, `sco_job_logs`, `sco_job_stop`, `sco_job_submit`, `sco_job_workers`, `sco_resource_options`, `sco_source_add`, `sco_source_remove`, `sco_source_update`, `sco_sources_list`, `sco_volume_quota`, `sco_volumes_list` | `ctx.tools`, `ctx.sco`, `ctx.scoSubmit for sources and template submission`, `ctx.approval for submission and stop` | `tool/call`, `SenseCore SSP training jobs`, `registered sources`, `tool/result` | - | 仅通过显式实验组合加载。运行本地 sco CLI；除非 confirmMutations 为 false，否则未设置 dryRun 的提交和停止都会询问用户。数据源、资源选项和按模板提交的工具只在挂载 sco-submit 时出现。 |
+| `@deepseek-ai/dsh-experimental-tool-sco` | `sco_config_form`, `sco_job_create`, `sco_job_describe`, `sco_job_list`, `sco_job_logs`, `sco_job_stop`, `sco_job_submit`, `sco_job_workers`, `sco_resource_options`, `sco_source_add`, `sco_source_remove`, `sco_source_update`, `sco_sources_list`, `sco_volume_quota`, `sco_volumes_list` | `ctx.tools`, `ctx.sco`, `ctx.scoSubmit for sources and template submission`, `ctx.approval for submission and stop` | `tool/call`, `SenseCore SSP training jobs`, `registered sources`, `tool/result` | - | 仅通过显式实验组合加载。运行本地 sco CLI；除非 confirmMutations 为 false，否则未设置 dryRun 的提交和停止都会询问用户。数据源、资源选项和按模板提交的工具只在挂载 sco-submit 时出现。 |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`、`ctx.workflowEngine`、`ctx.systemPrompt`、`a calling Agent (exec.agent parents the script children)` | `tool/call`、`tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-workspace-dependencies` | `load_workspace_dependencies` | `ctx.tools` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`、`web_search` | `ctx.tools`、`ctx.web`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可见 schema 在更换后端时保持稳定。 |
@@ -2672,6 +2672,148 @@ todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为
 
 ## `@deepseek-ai/dsh-experimental-tool-sco`
 
+### `sco_config_form`
+
+在聊天中打开交互式表单，让用户设置 SSP 训练任务或云开发机：镜像、挂载的数据、代码和输出位置、工作空间、队列、机型、Pod 数、GPU、CPU、内存、优先级和命令。用它代替用文字询问这些设置。把用户已说明的内容预填到 initial。表单允许用户加载之前保存的配置；传入 suggested 可预选 sco_sources_list 中符合需求的已保存配置。等待用户确认或取消，然后返回确认的设置、加载的配置以及用户保存时使用的名称。确认的任务用返回的字段调用 sco_job_submit 提交（先 dryRun）。没有 sco 命令能创建开发机；把确认的开发机设置报告给用户。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "kind": {
+      "type": "string",
+      "description": "job: an SSP training job. devmachine: a cloud development machine.",
+      "enum": [
+        "job",
+        "devmachine"
+      ]
+    },
+    "title": {
+      "type": "string",
+      "description": "Short heading for the form, for example what the job trains."
+    },
+    "suggested": {
+      "type": "string",
+      "description": "Saved configuration name to preselect."
+    },
+    "initial": {
+      "type": "object",
+      "description": "Values to prefill; omit fields the user has not decided.",
+      "additionalProperties": false,
+      "properties": {
+        "image": {
+          "type": "string",
+          "description": "Container image reference."
+        },
+        "imageType": {
+          "type": "string",
+          "enum": [
+            "OFFICIAL",
+            "PRIVATE",
+            "THIRD_PARTY"
+          ]
+        },
+        "code": {
+          "type": "string",
+          "description": "Code source name."
+        },
+        "ref": {
+          "type": "string",
+          "description": "Code ref directory."
+        },
+        "data": {
+          "type": "array",
+          "description": "Data source names.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "output": {
+          "type": "string",
+          "description": "Output source name."
+        },
+        "command": {
+          "type": "string",
+          "description": "Startup command."
+        },
+        "env": {
+          "type": "object",
+          "description": "Environment variables as string values.",
+          "additionalProperties": true
+        },
+        "framework": {
+          "type": "string",
+          "description": "Defaults to PYTORCH_DDP.",
+          "enum": [
+            "PYTORCH_DDP",
+            "MPI",
+            "RAY_JOB",
+            "TENSORFLOW_PS",
+            "FRAMEWORK_CUSTOM"
+          ]
+        },
+        "podCount": {
+          "type": "integer",
+          "description": "Pods. Defaults to 1."
+        },
+        "gpuCount": {
+          "type": "integer",
+          "description": "GPUs per pod. Defaults to 0."
+        },
+        "cpuCount": {
+          "type": "integer",
+          "description": "CPU cores per pod."
+        },
+        "memoryGib": {
+          "type": "integer",
+          "description": "Memory per pod in GiB."
+        },
+        "machineType": {
+          "type": "string",
+          "description": "Queue machine type code; comma-separate several."
+        },
+        "rdmaName": {
+          "type": "string"
+        },
+        "shmSizeGib": {
+          "type": "integer",
+          "description": "/dev/shm per pod in GiB, below memoryGib."
+        },
+        "priority": {
+          "type": "string",
+          "enum": [
+            "NORMAL",
+            "HIGH",
+            "HIGHEST"
+          ]
+        },
+        "maxAttempts": {
+          "type": "integer",
+          "description": "Retries after failure."
+        },
+        "enableQueuing": {
+          "type": "boolean",
+          "description": "Wait in queue when quota is insufficient."
+        },
+        "queueId": {
+          "type": "string",
+          "description": "Full queue resource id. Omit to use the configured default."
+        },
+        "workspace": {
+          "type": "string",
+          "description": "SSP workspace name. Omit to use the configured default."
+        }
+      }
+    }
+  },
+  "required": [
+    "kind"
+  ]
+}
+```
+
+来源： [`packages/experimental/tool-sco/src/index.ts`](../packages/experimental/tool-sco/src/index.ts)
+
 ### `sco_job_create`
 
 提交 SenseCore SSP 训练任务。先用 dryRun 校验并查看合并后的 TrainingJob；正式提交会询问用户，任务名已存在时失败。GPU 任务需要 machineType；纯 CPU 任务需要 cpuCount 和 memoryGib。
@@ -3299,7 +3441,7 @@ todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为
 
 ### `sco_sources_list`
 
-列出已登记的数据、代码和输出位置、已配置的任务模板，以及每个任务挂载输出目录的固定容器路径。调用 sco_job_submit 前先调用它来选择名字。
+列出已登记的数据、代码和输出位置、已配置的任务模板、用户从之前表单保存的配置，以及每个任务挂载输出目录的固定容器路径。调用 sco_job_submit 前先调用它来选择名字；调用 sco_config_form 前先调用它来查找合适的已保存配置。
 
 ```json
 {

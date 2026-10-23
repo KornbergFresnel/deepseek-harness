@@ -9,6 +9,7 @@ import * as StorageDomain from '@deepseek-ai/dsh-storage-domain'
 import * as StorageJson from '@deepseek-ai/dsh-storage-json'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import { brandString } from '@deepseek-ai/dsh-brand'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { remoteErrorOf } from '@deepseek-ai/dsh-typert-protocol'
 import ClusterMonitor from '../src/index.ts'
 import type { ClusterJobDetail, ClusterWatchId, Config } from '../src/index.ts'
@@ -189,6 +190,22 @@ describe('cluster monitor', () => {
     off.ctx.emit('sco/job-created', { name: 'job-new' })
     await new Promise(resolve => setTimeout(resolve, 50))
     expect(off.ctx.clusterMonitor.list()).toEqual([])
+  })
+
+  it('records the Session that created or watched a job and attaches a Session to an existing watch once', async () => {
+    const { ctx, fake } = await setup()
+    await fake.job('job-a', { state: 'Pending' })
+    await fake.job('job-b', { state: 'Pending' })
+    const session = brandString<SessionId>('session-1')
+    ctx.emit('sco/job-created', { name: 'job-a', sessionId: session })
+    const [created] = await until(() => ctx.clusterMonitor.list(), rows => rows.length === 1)
+    expect(created).toMatchObject({ name: 'job-a', sessionId: 'session-1', origin: 'created' })
+    const manual = await ctx.clusterMonitor.watch({ name: 'job-b' })
+    expect(manual.sessionId).toBeUndefined()
+    const attached = await ctx.clusterMonitor.watch({ name: 'job-b', sessionId: session })
+    expect(attached).toMatchObject({ id: manual.id, sessionId: 'session-1' })
+    const kept = await ctx.clusterMonitor.watch({ name: 'job-b', sessionId: brandString<SessionId>('session-2') })
+    expect(kept.sessionId).toBe('session-1')
   })
 
   it('resumes stored watches after a restart and polls only unfinished jobs', async () => {

@@ -3,35 +3,35 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/experimental/client-ui-cluster-monitor/README.md
 /:
-  en: 1ac1fe46f5c8f6b0
-  zh: 475278664d011a75
+  en: 6cd11cd0f7190abb
+  zh: a4e6f8c64c9d35b8
 /deepseek-ai-dsh-experimental-client-ui-cluster-monitor:
   en: f248abc80ac90558
   zh: 1ad772bb93c29962
 /deepseek-ai-dsh-experimental-client-ui-cluster-monitor/summary:
-  en: 213d0353fd0f30bf
-  zh: 19ccc9cc669cfcc4
+  en: 9a5bc925f731980b
+  zh: e61cea77e67bd83c
 /deepseek-ai-dsh-experimental-client-ui-cluster-monitor/table-of-contents:
   en: d152484eb41ac6b4
   zh: 2f8a621b991260a1
 /deepseek-ai-dsh-experimental-client-ui-cluster-monitor/use-this-package:
-  en: 1fef4dd4b6e9eb90
-  zh: 01b1019318fc82c9
+  en: b6a7b93d6436cb1c
+  zh: 7846e30af688d600
 /deepseek-ai-dsh-experimental-client-ui-cluster-monitor/understand-the-implementation:
-  en: 3a171ff905d3474b
-  zh: 653d50b443f3adc7
+  en: e7ef757b331c9277
+  zh: a257e610e25e3685
 /deepseek-ai-dsh-experimental-client-ui-cluster-monitor/further-exploration:
   en: cf438c77896632e4
   zh: e6b63297a98fd5a6
 /deepseek-ai-dsh-experimental-client-ui-cluster-monitor/model-experience:
-  en: 9eec9142c7d5ac32
-  zh: 14e8ed033c458b5c
+  en: 9a8ad4d416eb51c1
+  zh: 02ea63f9197919e8
 /deepseek-ai-dsh-experimental-client-ui-cluster-monitor/model-experience/kv-cache-effect:
   en: e277b74f9b721f5e
   zh: 014c91db5c8570d0
 /deepseek-ai-dsh-experimental-client-ui-cluster-monitor/known-limitations-and-deferred-work:
-  en: dce1c8e195296efc
-  zh: c56f48ebb843edb6
+  en: 90986ce764867e4f
+  zh: c39830d024e5c274
 /deepseek-ai-dsh-experimental-client-ui-cluster-monitor/known-limitations-and-deferred-work/dev-note:
   en: 0225ba087c5266f3
   zh: 9c1d441532d6e9e6

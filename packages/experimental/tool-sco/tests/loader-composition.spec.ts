@@ -20,6 +20,7 @@ import ApprovalService from '@deepseek-ai/dsh-user-approval'
 import type { ApprovalOutcome, ApprovalRequest } from '@deepseek-ai/dsh-user-approval'
 import ScoGateway from '@deepseek-ai/dsh-experimental-sco'
 import ScoSubmit from '@deepseek-ai/dsh-experimental-sco-submit'
+import type { ScoConfigForm } from '@deepseek-ai/dsh-experimental-sco-submit/types'
 import Storage from '@deepseek-ai/dsh-storage'
 import * as StorageDomain from '@deepseek-ai/dsh-storage-domain'
 import * as StorageJson from '@deepseek-ai/dsh-storage-json'
@@ -255,11 +256,72 @@ describe('SSP job tools through real Loader composition', () => {
     expect(tool('sco_job_submit')({ name: 'job-a', dryRun: true })).toMatchObject({ title: 'sco_job_submit job-a (dry run)' })
     expect(tool('sco_job_submit')({ name: 'job-a' })).toMatchObject({ title: 'sco_job_submit job-a' })
 
+    const createdEvents: unknown[] = []
+    ctx.on('sco/job-created', (event) => { createdEvents.push(event) })
+    await call(ctx, agent, 'sco_job_submit', { name: 'job-wbt2', template: 'wbt-train', machineType: 'h1ls.rp.k60a', gpuCount: 8 })
+    expect(createdEvents).toEqual([{ name: 'job-wbt2', workspace: 'team-a', sessionId: 'tool-sco-loader' }])
+
     const entry = [...ctx.loader.entries()].find(candidate => candidate.options.name === 'cordis:@deepseek-ai/dsh-experimental-sco-submit')
     await entry!.fiber!.dispose()
     expect(ctx.tools.schemas().map(schema => schema.name).filter(name => name.startsWith('sco_'))).toEqual([
       'sco_job_list', 'sco_job_describe', 'sco_job_workers', 'sco_job_logs', 'sco_job_create', 'sco_job_stop',
       'sco_volumes_list', 'sco_volume_quota',
     ])
+  })
+})
+
+describe('configuration forms through real Loader composition', () => {
+  /** Wait until the form for one call is open, then return it. */
+  async function opened(ctx: Context, callId: string) {
+    for (let attempt = 0; attempt < 200; attempt++) {
+      const lifetime = new AbortController()
+      const iterator = ctx.scoSubmit.followForms(lifetime.signal)[Symbol.asyncIterator]()
+      const next = await iterator.next()
+      const forms: readonly ScoConfigForm[] = next.done === true ? [] : next.value
+      lifetime.abort()
+      const form = forms.find(candidate => candidate.callId === callId)
+      if (form !== undefined) return form
+      await new Promise(resolve => setTimeout(resolve, 10))
+    }
+    throw new Error(`form ${callId} never opened`)
+  }
+
+  it('waits for the user to confirm a form, saves it for reuse, and offers it to the next form', async () => {
+    const { ctx, agent } = await boot([], true)
+    await call(ctx, agent, 'sco_source_add', { name: 'rlh', kind: 'code', volumeType: 'afs', volumeId: 'vol-code', root: 'code', mountPath: '/code', defaultRef: 'main' })
+    const first = ToolCallId('form-1')
+    const running = ctx.tools.execute({
+      name: 'sco_config_form', callId: first, agent, signal: new AbortController().signal,
+      arguments: { kind: 'job', title: 'WBT', initial: { image: 'registry/rlh:wbt', code: 'rlh', gpuCount: 8, env: { SEED: '1' } } },
+    })
+    const form = await opened(ctx, first)
+    expect(form).toMatchObject({ kind: 'job', title: 'WBT', sessionId: 'tool-sco-loader', initial: { image: 'registry/rlh:wbt', code: 'rlh', gpuCount: 8, env: { SEED: '1' } } })
+    await ctx.scoSubmit.answerForm(first, { kind: 'confirmed', spec: { ...form.initial, podCount: 2 }, save: { name: 'wbt-8gpu', description: 'WBT on 8 GPUs' } })
+    const result = await running
+    expect(result.value).toEqual({ kind: 'confirmed', workload: 'job', spec: { image: 'registry/rlh:wbt', code: 'rlh', gpuCount: 8, env: { SEED: '1' }, podCount: 2 }, savedAs: 'wbt-8gpu' })
+    expect(text(result)).toBe(JSON.stringify(result.value))
+    const listed = await call(ctx, agent, 'sco_sources_list', {})
+    expect(listed.value).toMatchObject({ configs: { 'wbt-8gpu': { kind: 'job', description: 'WBT on 8 GPUs', spec: { podCount: 2 } } } })
+
+    const second = ToolCallId('form-2')
+    const again = ctx.tools.execute({ name: 'sco_config_form', callId: second, agent, signal: new AbortController().signal, arguments: { kind: 'job', suggested: 'wbt-8gpu' } })
+    expect(await opened(ctx, second)).toMatchObject({ suggested: 'wbt-8gpu', initial: {} })
+    await ctx.scoSubmit.answerForm(second, { kind: 'cancelled' })
+    expect((await again).value).toEqual({ kind: 'cancelled' })
+
+    expect(text(await call(ctx, agent, 'sco_config_form', { kind: 'job', suggested: 'absent' }))).toContain('no configuration named "absent" is saved')
+    expect(text(await call(ctx, agent, 'sco_config_form', { kind: 'devmachine', initial: { env: { N: 1 } } }))).toContain('env.N must be a string')
+    expect(ctx.tools.get('sco_config_form')!.presentCall!({ kind: 'devmachine' })).toMatchObject({ title: 'sco_config_form devmachine' })
+  })
+
+  it('closes a form opened outside a Session when the tool call is cancelled', async () => {
+    const { ctx } = await boot([], true)
+    const lifetime = new AbortController()
+    const callId = ToolCallId('form-cancel')
+    const running = ctx.tools.execute({ name: 'sco_config_form', callId, signal: lifetime.signal, arguments: { kind: 'devmachine' } })
+    expect((await opened(ctx, callId)).sessionId).toBeUndefined()
+    lifetime.abort(new Error('turn stopped'))
+    expect((await running).isError).toBe(true)
+    await expect(ctx.scoSubmit.answerForm(callId, { kind: 'cancelled' })).rejects.toThrow('no configuration form is open')
   })
 })

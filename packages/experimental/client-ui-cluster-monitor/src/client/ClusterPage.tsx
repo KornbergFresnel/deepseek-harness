@@ -38,7 +38,12 @@ const PHASE_TONE: Readonly<Record<ClusterJobPhase, TagTone>> = {
   unknown: 'outline',
 }
 
-function PhaseTag({ phase, t }: { phase: ClusterJobPhase; t: Translate }) {
+/**
+ * Render a job phase as a colored tag.
+ * @param props - the phase and the translate function.
+ * @returns the tag.
+ */
+export function PhaseTag({ phase, t }: { phase: ClusterJobPhase; t: Translate }) {
   return <Tag tone={PHASE_TONE[phase]}>{t(`phase.${phase}`)}</Tag>
 }
 
@@ -81,7 +86,15 @@ function useMirror<T>(handle: MirrorHandle<T> | undefined): Mirror<T> | undefine
   )
 }
 
-function JobDetail({ props, watchId, onRemoved }: { props: ClusterPageProps; watchId: ClusterWatchId; onRemoved: () => void }) {
+/** Actions and copy the job detail needs; the Cluster jobs page and the Session jobs tab both supply them. */
+export type JobDetailActions = Pick<ClusterPageInjected, 'openJob' | 'refresh' | 'unwatch'> & { readonly t: Translate }
+
+/**
+ * Render one watched job's state, curves, logs, and job object with refresh and stop-watching actions.
+ * @param props - the job's actions and copy, its watch id, and the callback after the watch is removed.
+ * @returns the detail section.
+ */
+export function JobDetail({ props, watchId, onRemoved }: { props: JobDetailActions; watchId: ClusterWatchId; onRemoved: () => void }) {
   const { openJob, refresh, unwatch, t } = props
   const [handle, setHandle] = useState<MirrorHandle<ClusterJobDetail>>()
   const [busy, setBusy] = useState(false)

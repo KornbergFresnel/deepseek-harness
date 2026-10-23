@@ -1,6 +1,8 @@
 /** Source, template, option, submission, and `clusterConfig` Remote records; type aliases so tool results carry them as JSON values. */
 
 import type { CreateScoJobRequest, ScoDefaults, ScoFramework, ScoImageType, ScoPriority } from '@deepseek-ai/dsh-experimental-sco/types'
+import type { ToolCallId } from '@deepseek-ai/dsh-llm/brand'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 
 /** Cluster storage a source lives on. */
@@ -208,6 +210,8 @@ export type ScoConfigOverview = {
   templates: { name: string; template: ScoJobTemplate }[]
   /** Options cached for the default workspace; absent when none is configured or nothing is cached. */
   options?: { workspace: string; fetchedAt: string; queues: ScoQueueChoice[] }
+  /** Saved workload configurations sorted by name. */
+  configs: { name: string; config: ScoSavedConfig }[]
 }
 
 /** Request to register or replace a source from the configuration page. */
@@ -217,3 +221,81 @@ export type ScoSourceSaveRequest = {
   /** Replace a registered source instead of adding a new one. */
   replace?: boolean
 }
+
+/** What a workload configuration sets up: an SSP training job or a cloud development machine. */
+export type ScoWorkloadKind = 'job' | 'devmachine'
+
+/** Image, mounts, command, and resources a configuration form edits; every field is optional. */
+export type ScoWorkloadSpec = Omit<ScoJobTemplate, 'description'> & {
+  /** SSP workspace name. */
+  workspace?: string
+  /** Full queue resource id. */
+  queueId?: string
+}
+
+/** A workload configuration the user saved for reuse. */
+export type ScoSavedConfig = {
+  kind: ScoWorkloadKind
+  /** What the configuration is for. */
+  description?: string
+  spec: ScoWorkloadSpec
+  /** ISO time of the first save. */
+  createdAt: string
+  /** ISO time of the latest save. */
+  updatedAt: string
+  /** ISO time a configuration form last loaded it. */
+  lastUsedAt?: string
+}
+
+/** Request to save a workload configuration. */
+export type ScoConfigSaveRequest = {
+  /** Configuration name: lowercase letters, digits, and hyphens. */
+  name: string
+  kind: ScoWorkloadKind
+  description?: string
+  spec: ScoWorkloadSpec
+  /** Replace a saved configuration of the same name instead of failing. */
+  replace?: boolean
+}
+
+/** A configuration form the agent opened, waiting for the user. */
+export type ScoConfigForm = {
+  /** Tool call that opened the form; its chat row renders the form. */
+  callId: ToolCallId
+  /** Session whose agent opened the form; absent outside a Session. */
+  sessionId?: SessionId
+  kind: ScoWorkloadKind
+  /** Heading the agent gave the form. */
+  title?: string
+  /** Values the agent proposed. */
+  initial: ScoWorkloadSpec
+  /** Saved configuration the agent suggests loading. */
+  suggested?: string
+  /** ISO time the form opened. */
+  openedAt: string
+}
+
+/** The user's answer to a configuration form. */
+export type ScoConfigFormAnswer =
+  | {
+    kind: 'confirmed'
+    spec: ScoWorkloadSpec
+    /** Saved configuration the user loaded before editing. */
+    loaded?: string
+    /** Save the confirmed values under this name; a saved configuration of the same name is replaced. */
+    save?: { name: string; description?: string }
+  }
+  | { kind: 'cancelled' }
+
+/** What the agent receives when a configuration form closes. */
+export type ScoConfigFormOutcome =
+  | {
+    kind: 'confirmed'
+    workload: ScoWorkloadKind
+    spec: ScoWorkloadSpec
+    /** Saved configuration the user loaded before editing. */
+    loaded?: string
+    /** Name the confirmed values were saved under. */
+    savedAs?: string
+  }
+  | { kind: 'cancelled' }

@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Let a model manage SenseCore SSP training jobs through the user's local `sco` CLI. Six tools list jobs, read a job, list its workers, read its logs, submit a job, and stop jobs, and two read AFS storage: volumes with capacity and a volume's directory quota rules. With [sco-submit](../sco-submit/README.md) mounted, six more tools register data, code, and output locations, read cached queue and machine-type options, and submit jobs composed from a template. Submission and stop ask the user first by default; dry-run submission validates a job without asking.
+Let a model manage SenseCore SSP training jobs through the user's local `sco` CLI. Six tools list, read, and stop jobs, list workers, read logs, and submit a job, and two read AFS volumes and directory quotas. With [sco-submit](../sco-submit/README.md) mounted, seven more register data, code, and output locations, read cached queue and machine-type options, submit jobs composed from a template, and open an in-conversation form where the user sets up a job or development machine. Submission and stop ask the user first by default; dry-run submission validates a job without asking.
 
 ## Table of Contents
 
@@ -45,13 +45,14 @@ Add this package's bundle to a profile, or mount the function plugin after the [
 | `sco_job_stop` | `{ names, output }` |
 | `sco_volumes_list` | Volume records with `id`, capacities, `usedPercent` when the capacities parse, region, zone, end time, and state |
 | `sco_volume_quota` | JSON directory quota rules for one volume |
-| `sco_sources_list` | `{ sources, templates, outputMountPath }` (needs sco-submit) |
+| `sco_sources_list` | `{ sources, templates, configs, outputMountPath }` (needs sco-submit) |
 | `sco_source_add`, `sco_source_update` | `{ name, source }` (needs sco-submit) |
 | `sco_source_remove` | `{ removed }` (needs sco-submit) |
 | `sco_resource_options` | Cached `{ workspace, fetchedAt, queues }` (needs sco-submit) |
 | `sco_job_submit` | `{ kind: 'dry-run', resolved, job }` or `{ kind: 'created', resolved, name, output }` (needs sco-submit) |
+| `sco_config_form` | `{ kind: 'confirmed', workload, spec, loaded?, savedAs? }` or `{ kind: 'cancelled' }` after the user answers (needs sco-submit) |
 
-With `confirmMutations` (default `true`), `sco_job_create` and `sco_job_submit` without `dryRun: true` and every `sco_job_stop` ask the user through `ctx.approval` after other pre-execute listeners allow the call; a denial from another listener stands without asking. Under the `never` approval policy these calls are rejected. Volume reads and source registration do not ask. `usedPercent` treats capacity units as binary (`1TB` = `1024GB`). Set `confirmMutations: false` only for unattended runs that may submit and stop jobs freely. The [generated tool catalog](../../../docs/tool-catalog.md#deepseek-aidsh-experimental-tool-sco) owns the exact schemas and model-facing descriptions.
+With `confirmMutations` (default `true`), `sco_job_create` and `sco_job_submit` without `dryRun: true` and every `sco_job_stop` ask the user through `ctx.approval` after other pre-execute listeners allow the call; a denial from another listener stands without asking. Under the `never` approval policy these calls are rejected. Volume reads, source registration, and `sco_config_form` do not ask; the form is itself the user's answer. `sco_job_create` and `sco_job_submit` record the calling agent's Session on the created job, so the Web client can list a conversation's jobs. `usedPercent` treats capacity units as binary (`1TB` = `1024GB`). Set `confirmMutations: false` only for unattended runs that may submit and stop jobs freely. The [generated tool catalog](../../../docs/tool-catalog.md#deepseek-aidsh-experimental-tool-sco) owns the exact schemas and model-facing descriptions.
 
 -----
 
@@ -61,7 +62,7 @@ With `confirmMutations` (default `true`), `sco_job_create` and `sco_job_submit` 
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-[`cordis.patch.yml`](cordis.patch.yml) inserts the `sco` gateway, `sco-submit`, and `tool-sco` rows. [`src/index.ts`](src/index.ts) registers eight typed tools that forward to `ctx.sco` and render their canonical values as JSON, except logs, which render as text with a truncation marker. Inside `ctx.inject(['scoSubmit'])` it registers the source, option, and submission tools, which forward to `ctx.scoSubmit` and disappear when that service unloads; source tools take flat arguments and reject fields the source kind does not use. The approval gate is a `tools/pre-execute` listener that delegates first and converts only an `allow` into `ask`. Host presentation uses generic cards. Disposal unregisters the tools and the listener.
+[`cordis.patch.yml`](cordis.patch.yml) inserts the `sco` gateway, `sco-submit`, and `tool-sco` rows. [`src/index.ts`](src/index.ts) registers eight typed tools that forward to `ctx.sco` and render their canonical values as JSON, except logs, which render as text with a truncation marker. Inside `ctx.inject(['scoSubmit'])` it registers the source, option, and submission tools, which forward to `ctx.scoSubmit` and disappear when that service unloads; source tools take flat arguments and reject fields the source kind does not use. The approval gate is a `tools/pre-execute` listener that delegates first and converts only an `allow` into `ask`. Host presentation uses generic cards. `sco_config_form` waits on `ctx.scoSubmit.askForm` under the call's abort signal, so stopping the turn closes the form. Disposal unregisters the tools and the listener.
 
 </details>
 
@@ -84,11 +85,11 @@ With `confirmMutations` (default `true`), `sco_job_create` and `sco_job_submit` 
 
 #### What the model sees
 
-The [tool catalog](../../../docs/tool-catalog.md#deepseek-aidsh-experimental-tool-sco) defines the tools. `sco_resource_options` and `sco_job_submit` tell the model to offer machine types and queues as choices and to dry-run first; a dry-run result shows the expanded mounts and startup command in `resolved`. Read results contain the cluster's JSON; log results contain log text, prefixed with `[earlier output truncated]` when only the tail is kept. A submission or stop the user rejects fails with the approval denial.
+The [tool catalog](../../../docs/tool-catalog.md#deepseek-aidsh-experimental-tool-sco) defines the tools. `sco_resource_options` and `sco_job_submit` tell the model to offer machine types and queues as choices and to dry-run first; a dry-run result shows the expanded mounts and startup command in `resolved`. `sco_config_form` tells the model to ask for settings through the form instead of in text, to prefill what the user already said, and to suggest a saved configuration from `sco_sources_list`; its result contains the settings the user confirmed and is submitted with `sco_job_submit`. Read results contain the cluster's JSON; log results contain log text, prefixed with `[earlier output truncated]` when only the tail is kept. A submission or stop the user rejects fails with the approval denial.
 
 #### Token effect
 
-The eight job and volume schemas, plus six more while sco-submit is mounted, have a fixed per-request cost. Each call appends its arguments and result to tool history; listings and logs are bounded by the gateway's `maxOutputBytes`.
+The eight job and volume schemas, plus seven more while sco-submit is mounted, have a fixed per-request cost. Each call appends its arguments and result to tool history; listings and logs are bounded by the gateway's `maxOutputBytes`.
 
 #### KV Cache effect
 

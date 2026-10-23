@@ -1,6 +1,7 @@
 /** Client-safe records of the `cluster` Remote namespace: watched SSP jobs, their training curves, and log tails. */
 
 import type { Branded } from '@deepseek-ai/dsh-brand'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {} from '@deepseek-ai/dsh-typert-protocol'
 
 declare module '@deepseek-ai/dsh-typert-protocol' {
@@ -30,6 +31,8 @@ export interface ClusterWatchRequest {
   readonly name: string
   /** SSP workspace; omitted uses the sco gateway default, then the sco profile. */
   readonly workspace?: string
+  /** Session the job belongs to; attaches an existing watch that has none. */
+  readonly sessionId?: SessionId
 }
 
 /** One watched job as the job list shows it. */
@@ -37,6 +40,8 @@ export interface ClusterWatchRow {
   readonly id: ClusterWatchId
   readonly name: string
   readonly workspace?: string
+  /** Session whose agent submitted the job, or that watched it manually; absent for jobs outside any Session. */
+  readonly sessionId?: SessionId
   readonly origin: ClusterWatchOrigin
   readonly phase: ClusterJobPhase
   /** SSP `state` exactly as the last successful describe reported it. */

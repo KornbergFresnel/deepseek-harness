@@ -1,11 +1,11 @@
-/** Reconnecting browser mirrors of the Host watch list, of one watched job, and of the gateway configuration overview. */
+/** Reconnecting browser mirrors of the Host watch list, one watched job, the configuration overview, and open configuration forms. */
 
 import type { Context } from '@deepseek-ai/cordis'
 import { RemoteStreamCarrierError } from '@deepseek-ai/dsh-api-gateway/client'
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { ClusterJobDetail, ClusterWatchId, ClusterWatchRow } from '@deepseek-ai/dsh-experimental-cluster-monitor/types'
 import type {} from '@deepseek-ai/dsh-experimental-cluster-monitor/remote'
-import type { ScoConfigOverview } from '@deepseek-ai/dsh-experimental-sco-submit/types'
+import type { ScoConfigForm, ScoConfigOverview } from '@deepseek-ai/dsh-experimental-sco-submit/types'
 import type {} from '@deepseek-ai/dsh-experimental-sco-submit/remote'
 
 /** Latest value of one Host stream with its carrier state; a carrier loss keeps the last value. */
@@ -70,4 +70,13 @@ export function observeJob(ctx: Context, watchId: ClusterWatchId): MirrorHandle<
  */
 export function observeOverview(ctx: Context): MirrorHandle<ScoConfigOverview> {
   return mirror(ctx, 'Cluster configuration', signal => ctx.remote.clusterConfig.follow(signal))
+}
+
+/**
+ * Mirror the configuration forms open in every Session.
+ * @param ctx - Client context with the mounted `clusterConfig` namespace.
+ * @returns the form-list mirror and its disposer.
+ */
+export function observeForms(ctx: Context): MirrorHandle<ScoConfigForm[]> {
+  return mirror(ctx, 'Cluster configuration forms', signal => ctx.remote.clusterConfig.followForms(signal))
 }
