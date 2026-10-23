@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-experimental-client-ui-cluster-monitor",
-  "description": "Browser page that lists watched SSP jobs with their state, training curves, and logs",
+  "description": "Browser pages that list watched SSP jobs with their state, training curves, and logs, and edit the sources used to submit jobs",
   "version": "0.2.1-rc.2",
   "publishConfig": {
     "access": "public"
@@ -50,6 +50,8 @@
     "@deepseek-ai/dsh-client-ui-sidebar": "workspace:*",
     "@deepseek-ai/dsh-client-ui-slots": "workspace:*",
     "@deepseek-ai/dsh-experimental-cluster-monitor": "workspace:*",
+    "@deepseek-ai/dsh-experimental-sco": "workspace:*",
+    "@deepseek-ai/dsh-experimental-sco-submit": "workspace:*",
     "@deepseek-ai/dsh-typert-protocol": "workspace:*",
     "@testing-library/react": "^16.3.3",
     "react": "^18.2.0",

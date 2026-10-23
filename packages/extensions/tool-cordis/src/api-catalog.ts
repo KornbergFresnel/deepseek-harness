@@ -1255,6 +1255,26 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'gitBranch',
+    summary: 'Serves branch state and switching to the Web client through the Session\'s own subprocess provider.',
+    description: 'Serves branch state and switching to the Web client through the Session\'s own subprocess provider.',
+    methods: [
+      {
+        signature: '@Remote async status(agent: Agent, signal: AbortSignal): Promise<GitBranchStatus>',
+        description: 'Read the branch state of the Session\'s working directory.',
+        parameters: [{ name: 'agent', description: 'Session owner supplied by the Gateway.' }, { name: 'signal', description: 'request cancellation.' }],
+        returns: '`none` outside a repository, otherwise the checked-out branch and the branches available to switch to.',
+      },
+      {
+        signature: '@Remote async switchBranch(agent: Agent, request: GitSwitchRequest, signal: AbortSignal): Promise<GitBranchRepository>',
+        description: 'Check out a listed branch in the Session\'s working directory with `git switch`, which keeps uncommitted changes that do not conflict and refuses otherwise.',
+        parameters: [{ name: 'agent', description: 'Session owner supplied by the Gateway.' }, { name: 'request', description: 'the branch, and whether it names a remote-tracking branch.' }, { name: 'signal', description: 'request cancellation; an abort after Git started leaves the outcome to Git.' }],
+        returns: 'the branch state after the switch.',
+        throws: ['when the directory is not a repository, the branch is not listed, or Git refuses the switch.'],
+      },
+    ],
+  },
+  {
     key: 'goals',
     summary: 'Goal service (`ctx.goals`) backed exclusively by the owning session log.',
     description: 'Goal service (`ctx.goals`) backed exclusively by the owning session log.',
@@ -2104,8 +2124,8 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
   },
   {
     key: 'sco',
-    summary: 'Adapts `sco ssp jobs` subcommands to typed operations.',
-    description: 'Adapts `sco ssp jobs` subcommands to typed operations. Every invocation is a literal argv with `--flag=value` tokens, run without a shell or sandbox confinement because the CLI needs network access and its credential profile.',
+    summary: 'Adapts `sco ssp jobs`, `workspaces list-queues`, `queues get`, and `afs volumes list` and `list-dir-quota` subcommands to typed operations.',
+    description: 'Adapts `sco ssp jobs`, `workspaces list-queues`, `queues get`, and `afs volumes list` and `list-dir-quota` subcommands to typed operations. Every invocation is a literal argv with `--flag=value` tokens, run without a shell or sandbox confinement because the CLI needs network access and its credential profile.',
     methods: [
       {
         signature: 'async listJobs(request: ListScoJobsRequest = {}, signal?: AbortSignal): Promise<JsonValue>',
@@ -2142,6 +2162,135 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Stop up to 100 training jobs.',
         parameters: [{ name: 'names', description: 'job names.' }, { name: 'request', description: 'workspace.' }, { name: 'signal', description: 'cancellation; a cancelled stop may still have been applied remotely.' }],
         returns: 'the stopped names and CLI output.',
+      },
+      {
+        signature: 'async listQueues(request: ScoWorkspaceRequest = {}, signal?: AbortSignal): Promise<JsonValue>',
+        description: 'List the queues a workspace may submit to.',
+        parameters: [{ name: 'request', description: 'workspace; the CLI takes it positionally, so it must resolve from the request or config.' }, { name: 'signal', description: 'cancellation.' }],
+        returns: 'the CLI\'s JSON queue listing.',
+      },
+      {
+        signature: 'async describeQueue(cluster: string, queue: string, signal?: AbortSignal): Promise<JsonValue>',
+        description: 'Read one queue, including the machine types (`spec_code`) its workloads accept.',
+        parameters: [{ name: 'cluster', description: 'cluster name from the queue\'s resource id.' }, { name: 'queue', description: 'queue name from the queue\'s resource id.' }, { name: 'signal', description: 'cancellation.' }],
+        returns: 'the CLI\'s JSON queue object.',
+      },
+      {
+        signature: 'async listVolumes(signal?: AbortSignal): Promise<ScoAfsVolume[]>',
+        description: 'List the AFS volumes the active sco credentials can see, with capacity and state.',
+        parameters: [{ name: 'signal', description: 'cancellation.' }],
+        returns: 'one record per volume with its used percentage, named from SRM when the AFS listing leaves `Name` empty; output that is not an array of objects with an `ID` fails, as does a failed SRM page.',
+      },
+      {
+        signature: 'async listDirectoryQuotas(volume: string, signal?: AbortSignal): Promise<JsonValue>',
+        description: 'List the directory quota rules of one AFS volume.',
+        parameters: [{ name: 'volume', description: 'volume `ID` from `listVolumes`.' }, { name: 'signal', description: 'cancellation.' }],
+        returns: 'the CLI\'s JSON rule listing.',
+      },
+      {
+        signature: 'workspaceOf(request: ScoWorkspaceRequest): string | undefined',
+        description: 'Resolve the workspace an operation targets on the command line.',
+        parameters: [{ name: 'request', description: 'optional per-request workspace.' }],
+        returns: 'the request workspace, else the runtime default, else the configured default; undefined defers to the sco profile.',
+      },
+      {
+        signature: 'setDefaults(defaults: ScoDefaults): void',
+        description: 'Replace the runtime defaults, which take precedence over the gateway config until replaced again.',
+        parameters: [{ name: 'defaults', description: 'workspace and queue; an absent field falls back to the config, then the sco profile.' }],
+      },
+    ],
+  },
+  {
+    key: 'scoSubmit',
+    summary: 'Composes SSP jobs from named sources and templates and submits them through `ctx.sco`.',
+    description: 'Composes SSP jobs from named sources and templates and submits them through `ctx.sco`. Sources, resource options, and the page\'s default workspace and queue persist in the `sco_submit` storage domain; templates come from config. Saved defaults are applied to `ctx.sco` at start and withdrawn on disposal. Nothing in the `clusterConfig` namespace enters a model request; the model reaches the same records through the SSP job tools.',
+    methods: [
+      {
+        signature: 'async sources(): Promise<Record<string, ScoSource>>',
+        description: 'List registered sources.',
+        parameters: [],
+        returns: 'sources by name.',
+      },
+      {
+        signature: 'listTemplates(): Record<string, ScoJobTemplate>',
+        description: 'List configured templates.',
+        parameters: [],
+        returns: 'templates by name.',
+      },
+      {
+        signature: 'async addSource(name: string, source: ScoSource): Promise<void>',
+        description: 'Register a new source.',
+        parameters: [{ name: 'name', description: 'unused source name.' }, { name: 'source', description: 'locations to mount.' }],
+      },
+      {
+        signature: 'async updateSource(name: string, source: ScoSource): Promise<void>',
+        description: 'Replace a registered source.',
+        parameters: [{ name: 'name', description: 'registered source name.' }, { name: 'source', description: 'new locations.' }],
+      },
+      {
+        signature: 'async removeSource(name: string): Promise<void>',
+        description: 'Remove a registered source; templates that name it fail at their next submission.',
+        parameters: [{ name: 'name', description: 'registered source name.' }],
+      },
+      {
+        signature: 'async resourceOptions(request: ScoResourceOptionsRequest = {}, signal?: AbortSignal): Promise<ScoResourceOptions>',
+        description: 'Read the queues and machine types a workspace offers, querying the CLI only when nothing is cached or on `refresh`.',
+        parameters: [{ name: 'request', description: 'workspace and refresh.' }, { name: 'signal', description: 'cancellation.' }],
+        returns: 'cached or freshly queried options.',
+      },
+      {
+        signature: 'async resolve(request: SubmitScoJobRequest): Promise<ScoResolvedSubmission>',
+        description: 'Expand a submission against the registered sources and configured templates without running the CLI.',
+        parameters: [{ name: 'request', description: 'submission.' }],
+        returns: 'creation flags and the names they were composed from.',
+      },
+      {
+        signature: 'async submit(request: SubmitScoJobRequest, signal?: AbortSignal): Promise<ScoSubmission>',
+        description: 'Expand and submit a job, or validate it with `dryRun`. A machine type absent from cached options fails before the CLI runs; a CLI failure that names a resource field refreshes the cached options before the error propagates.',
+        parameters: [{ name: 'request', description: 'submission.' }, { name: 'signal', description: 'cancellation; a cancelled creation may still have been accepted remotely.' }],
+        returns: 'the merged `TrainingJob` for a dry run, otherwise the created name and CLI output, each with the flags used.',
+      },
+      {
+        signature: '@Remote async overview(): Promise<ScoConfigOverview>',
+        description: 'Read the configuration page state.',
+        parameters: [],
+        returns: 'gateway defaults, sources, templates, and the options cached for the default workspace.',
+      },
+      {
+        signature: '@Remote({ mode: \'stream\' }) async *follow(signal: AbortSignal): AsyncIterable<ScoConfigOverview>',
+        description: 'Follow the configuration page state: the overview now and after each source or option change.',
+        parameters: [{ name: 'signal', description: 'stream lifetime.' }],
+        returns: 'complete overviews.',
+      },
+      {
+        signature: '@Remote async saveSource(request: ScoSourceSaveRequest): Promise<void>',
+        description: 'Register or replace a source from the configuration page.',
+        parameters: [{ name: 'request', description: 'source name, locations, and whether to replace a registered source.' }],
+        returns: 'after the source is stored.',
+      },
+      {
+        signature: '@Remote async deleteSource(name: string): Promise<void>',
+        description: 'Remove a source from the configuration page.',
+        parameters: [{ name: 'name', description: 'registered source name.' }],
+        returns: 'after the source is deleted.',
+      },
+      {
+        signature: '@Remote async saveDefaults(defaults: ScoDefaults): Promise<void>',
+        description: 'Save the default workspace and queue for the current sco profile; they override the gateway config until changed.',
+        parameters: [{ name: 'defaults', description: 'workspace and full queue id; a blank or absent field falls back to the gateway config, then the sco profile.' }],
+        returns: 'after the defaults are stored and applied.',
+      },
+      {
+        signature: '@Remote async refreshOptions(): Promise<void>',
+        description: 'Query the queues and machine types of the default workspace again and cache them.',
+        parameters: [],
+        returns: 'after the options are stored.',
+      },
+      {
+        signature: '@Remote volumes(): Promise<ScoAfsVolume[]>',
+        description: 'List the AFS volumes the sco credentials can see, for choosing where a source lives.',
+        parameters: [],
+        returns: 'volumes with capacity and used percentage.',
       },
     ],
   },
@@ -4522,6 +4671,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [{ name: 'event', description: 'created job name and the workspace named on the command line.' }],
   },
   {
+    name: 'sco/job-submitted',
+    mode: 'emit',
+    signature: '\'sco/job-submitted\'(event: ScoJobSubmitted): void',
+    summary: 'A submission created a job; observers can relate the job to its template, code ref, and data.',
+    description: 'A submission created a job; observers can relate the job to its template, code ref, and data.',
+    parameters: [{ name: 'event', description: 'created job name, workspace, and the names it was composed from.' }],
+  },
+  {
     name: 'session-telemetry/record',
     mode: 'waterfall',
     signature: '\'session-telemetry/record\'(record: SessionTelemetryRecord, next: () => SessionTelemetryRecord): SessionTelemetryRecord',
@@ -5395,7 +5552,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'CreateScoJobRequest',
-    declaration: 'export interface CreateScoJobRequest extends ScoWorkspaceRequest {\n    name: string;\n    displayName?: string;\n    image: string;\n    imageType?: ScoImageType;\n    args: string;\n    framework?: ScoFramework;\n    podCount?: number;\n    gpuCount?: number;\n    cpuCount?: number;\n    memoryGib?: number;\n    machineType?: string;\n    rdmaName?: string;\n    shmSizeGib?: number;\n    queueId?: string;\n    priority?: ScoPriority;\n    env?: Readonly<Record<string, string>>;\n    volumeMounts?: readonly string[];\n    maxAttempts?: number;\n    enableQueuing?: boolean;\n    tensorboardLogPath?: string;\n    dryRun?: boolean;\n}',
+    declaration: 'export type CreateScoJobRequest = ScoWorkspaceRequest & {\n    name: string;\n    displayName?: string;\n    image: string;\n    imageType?: ScoImageType;\n    args: string;\n    framework?: ScoFramework;\n    podCount?: number;\n    gpuCount?: number;\n    cpuCount?: number;\n    memoryGib?: number;\n    machineType?: string;\n    rdmaName?: string;\n    shmSizeGib?: number;\n    queueId?: string;\n    priority?: ScoPriority;\n    env?: Readonly<Record<string, string>>;\n    volumeMounts?: string[];\n    maxAttempts?: number;\n    enableQueuing?: boolean;\n    tensorboardLogPath?: string;\n    dryRun?: boolean;\n};',
   },
   {
     name: 'CreateSessionOptions',
@@ -5712,6 +5869,22 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'GenericResultView',
     declaration: 'export interface GenericResultView {\n    card: \'generic\';\n    title?: string;\n    content?: ContentBlock[];\n}',
+  },
+  {
+    name: 'GitBranchNone',
+    declaration: 'export interface GitBranchNone {\n    kind: \'none\';\n    cwd: string;\n}',
+  },
+  {
+    name: 'GitBranchRepository',
+    declaration: 'export interface GitBranchRepository {\n    kind: \'repository\';\n    cwd: string;\n    root: string;\n    branch: string | null;\n    commit: string;\n    local: string[];\n    remote: string[];\n    truncated: boolean;\n}',
+  },
+  {
+    name: 'GitBranchStatus',
+    declaration: 'export type GitBranchStatus = GitBranchNone | GitBranchRepository;',
+  },
+  {
+    name: 'GitSwitchRequest',
+    declaration: 'export interface GitSwitchRequest {\n    branch: string;\n    remote?: boolean;\n}',
   },
   {
     name: 'GoalActivation',
@@ -7090,6 +7263,26 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type ScheduleUpdateResult = {\n    readonly id: ScheduleId;\n    readonly updated: boolean;\n    readonly record: ScheduleRecord;\n} | ScheduleUpdateMiss | ScheduleToolError;',
   },
   {
+    name: 'ScoAfsVolume',
+    declaration: 'export type ScoAfsVolume = {\n    id: string;\n    name?: string;\n    type?: string;\n    totalCapacity?: string;\n    usedCapacity?: string;\n    usedPercent?: number;\n    region?: string;\n    zone?: string;\n    endTime?: string;\n    state?: string;\n};',
+  },
+  {
+    name: 'ScoCodeSource',
+    declaration: 'export type ScoCodeSource = {\n    kind: \'code\';\n    volume: ScoVolume;\n    root: string;\n    mountPath: string;\n    defaultRef: string;\n    setup?: string;\n    description?: string;\n};',
+  },
+  {
+    name: 'ScoConfigOverview',
+    declaration: 'export type ScoConfigOverview = {\n    profile?: string;\n    workspace?: string;\n    queueId?: string;\n    configured: ScoDefaults;\n    saved: ScoDefaults;\n    outputMountPath: string;\n    sources: {\n        name: string;\n        source: ScoSource;\n    }[];\n    templates: {\n        name: string;\n        template: ScoJobTemplate;\n    }[];\n    options?: {\n        workspace: string;\n        fetchedAt: string;\n        queues: ScoQueueChoice[];\n    };\n};',
+  },
+  {
+    name: 'ScoDataSource',
+    declaration: 'export type ScoDataSource = {\n    kind: \'data\';\n    volume: ScoVolume;\n    path?: string;\n    mountPath: string;\n    description?: string;\n};',
+  },
+  {
+    name: 'ScoDefaults',
+    declaration: 'export type ScoDefaults = {\n    workspace?: string;\n    queueId?: string;\n};',
+  },
+  {
     name: 'ScoFramework',
     declaration: 'export type ScoFramework = \'PYTORCH_DDP\' | \'MPI\' | \'RAY_JOB\' | \'TENSORFLOW_PS\' | \'FRAMEWORK_CUSTOM\';',
   },
@@ -7122,6 +7315,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ScoJobStop {\n    names: string[];\n    output: string;\n}',
   },
   {
+    name: 'ScoJobSubmitted',
+    declaration: 'export type ScoJobSubmitted = {\n    name: string;\n    workspace?: string;\n    template?: string;\n    code?: {\n        name: string;\n        ref: string;\n    };\n    data: string[];\n    output?: string;\n};',
+  },
+  {
+    name: 'ScoJobTemplate',
+    declaration: 'export type ScoJobTemplate = {\n    description?: string;\n    image?: string;\n    imageType?: ScoImageType;\n    code?: string;\n    ref?: string;\n    data?: string[];\n    output?: string;\n    command?: string;\n    env?: Record<string, string>;\n    framework?: ScoFramework;\n    podCount?: number;\n    gpuCount?: number;\n    cpuCount?: number;\n    memoryGib?: number;\n    machineType?: string;\n    rdmaName?: string;\n    shmSizeGib?: number;\n    priority?: ScoPriority;\n    maxAttempts?: number;\n    enableQueuing?: boolean;\n};',
+  },
+  {
+    name: 'ScoOutputSource',
+    declaration: 'export type ScoOutputSource = {\n    kind: \'output\';\n    volume: ScoVolume;\n    root: string;\n    description?: string;\n};',
+  },
+  {
     name: 'Scoped',
     declaration: 'export type Scoped<T extends object> = object & {\n    readonly [ScopedBrand]: T;\n};',
   },
@@ -7134,8 +7339,44 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type ScoPriority = \'NORMAL\' | \'HIGH\' | \'HIGHEST\';',
   },
   {
+    name: 'ScoQueueChoice',
+    declaration: 'export type ScoQueueChoice = ScoQueueOption & {\n    machineTypes: string[];\n};',
+  },
+  {
+    name: 'ScoQueueOption',
+    declaration: 'export type ScoQueueOption = {\n    id: string;\n    cluster: string;\n    queue: string;\n    detail: JsonValue;\n};',
+  },
+  {
+    name: 'ScoResolvedSubmission',
+    declaration: 'export type ScoResolvedSubmission = {\n    request: CreateScoJobRequest;\n    template?: string;\n    code?: {\n        name: string;\n        ref: string;\n    };\n    data: string[];\n    output?: string;\n};',
+  },
+  {
+    name: 'ScoResourceOptions',
+    declaration: 'export type ScoResourceOptions = {\n    workspace: string;\n    fetchedAt: string;\n    queues: ScoQueueOption[];\n};',
+  },
+  {
+    name: 'ScoResourceOptionsRequest',
+    declaration: 'export interface ScoResourceOptionsRequest {\n    workspace?: string;\n    refresh?: boolean;\n}',
+  },
+  {
+    name: 'ScoSource',
+    declaration: 'export type ScoSource = ScoDataSource | ScoCodeSource | ScoOutputSource;',
+  },
+  {
+    name: 'ScoSourceSaveRequest',
+    declaration: 'export type ScoSourceSaveRequest = {\n    name: string;\n    source: ScoSource;\n    replace?: boolean;\n};',
+  },
+  {
+    name: 'ScoSubmission',
+    declaration: 'export type ScoSubmission = {\n    kind: \'dry-run\';\n    resolved: CreateScoJobRequest;\n    job: JsonValue;\n} | {\n    kind: \'created\';\n    resolved: CreateScoJobRequest;\n    name: string;\n    output: string;\n};',
+  },
+  {
+    name: 'ScoVolume',
+    declaration: 'export type ScoVolume = {\n    type: \'afs\';\n    id: string;\n} | {\n    type: \'aoss\';\n    bucket: string;\n    endpoint: string;\n};',
+  },
+  {
     name: 'ScoWorkspaceRequest',
-    declaration: 'export interface ScoWorkspaceRequest {\n    workspace?: string;\n}',
+    declaration: 'export type ScoWorkspaceRequest = {\n    workspace?: string;\n};',
   },
   {
     name: 'SearchFileMatches',
@@ -8096,6 +8337,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SubagentStopReasonMap',
     declaration: 'export interface SubagentStopReasonMap {\n    completed: \'completed\';\n    aborted: \'aborted\';\n    error: \'error\';\n    \'max-tokens\': \'max-tokens\';\n    refusal: \'refusal\';\n}',
+  },
+  {
+    name: 'SubmitScoJobRequest',
+    declaration: 'export interface SubmitScoJobRequest extends Omit<ScoJobTemplate, \'description\'> {\n    name: string;\n    template?: string;\n    extraArgs?: string;\n    displayName?: string;\n    queueId?: string;\n    workspace?: string;\n    dryRun?: boolean;\n}',
   },
   {
     name: 'SubprocessCollect',

@@ -84,9 +84,12 @@ kind: "package-group"
 | [`webworker-runtime`](webworker-runtime/README.zh.md) | 在专用浏览器 worker 中运行 harness 插件树 | 库与 worker 入口，不使用 ctx key |
 | [`worktree`](worktree/README.zh.md) | 创建具名 Git 工作树并改变调用 Session 的当前目录 | `ctx.worktrees` |
 | [`sco`](sco/README.zh.md) | 通过本地 sco CLI 执行 SenseCore SSP 训练任务操作 | `ctx.sco` |
+| [`sco-submit`](sco-submit/README.zh.md) | 按登记的数据、代码和输出位置以及配置的模板组合 SSP 任务 | `ctx.scoSubmit` |
 | [`tool-sco`](tool-sco/README.zh.md) | 面向模型的 SSP 训练任务工具，提交和停止前先询问 | `ctx.tools` |
 | [`cluster-monitor`](cluster-monitor/README.zh.md) | 在 Host 上轮询关注的 SSP 任务：状态、训练曲线和日志 | `ctx.clusterMonitor` |
 | [`client-ui-cluster-monitor`](client-ui-cluster-monitor/README.zh.md) | 关注的 SSP 任务的集群任务页面 | — |
+| [`git-branch`](git-branch/README.zh.md) | 会话工作目录的当前分支和分支切换 | `ctx.gitBranch` |
+| [`client-ui-git-branch`](client-ui-git-branch/README.zh.md) | 新会话页面的 Git 分支按钮 | — |
 
 -----
 

@@ -85,7 +85,7 @@ Source: [`packages/experimental/cluster-monitor/src/index.ts`](../../packages/ex
 
 ### `ctx.sco` — `ScoGateway`
 
-Adapts `sco ssp jobs` subcommands to typed operations. Every invocation is a literal argv with `--flag=value` tokens, run without a shell or sandbox confinement because the CLI needs network access and its credential profile.
+Adapts `sco ssp jobs`, `workspaces list-queues`, `queues get`, and `afs volumes list` and `list-dir-quota` subcommands to typed operations. Every invocation is a literal argv with `--flag=value` tokens, run without a shell or sandbox confinement because the CLI needs network access and its credential profile.
 
 ```ts cordis-catalog
 /**
@@ -141,9 +141,168 @@ async createJob(request: CreateScoJobRequest, signal?: AbortSignal): Promise<Sco
  * @returns the stopped names and CLI output.
  */
 async stopJobs(names: readonly string[], request: ScoWorkspaceRequest = {}, signal?: AbortSignal): Promise<ScoJobStop>
+
+/**
+ * List the queues a workspace may submit to.
+ * @param request - workspace; the CLI takes it positionally, so it must resolve from the request or config.
+ * @param signal - cancellation.
+ * @returns the CLI's JSON queue listing.
+ */
+async listQueues(request: ScoWorkspaceRequest = {}, signal?: AbortSignal): Promise<JsonValue>
+
+/**
+ * Read one queue, including the machine types (`spec_code`) its workloads accept.
+ * @param cluster - cluster name from the queue's resource id.
+ * @param queue - queue name from the queue's resource id.
+ * @param signal - cancellation.
+ * @returns the CLI's JSON queue object.
+ */
+async describeQueue(cluster: string, queue: string, signal?: AbortSignal): Promise<JsonValue>
+
+/**
+ * List the AFS volumes the active sco credentials can see, with capacity and state.
+ * @param signal - cancellation.
+ * @returns one record per volume with its used percentage, named from SRM when the AFS listing leaves `Name` empty; output that is not an
+ *   array of objects with an `ID` fails, as does a failed SRM page.
+ */
+async listVolumes(signal?: AbortSignal): Promise<ScoAfsVolume[]>
+
+/**
+ * List the directory quota rules of one AFS volume.
+ * @param volume - volume `ID` from `listVolumes`.
+ * @param signal - cancellation.
+ * @returns the CLI's JSON rule listing.
+ */
+async listDirectoryQuotas(volume: string, signal?: AbortSignal): Promise<JsonValue>
+
+/**
+ * Resolve the workspace an operation targets on the command line.
+ * @param request - optional per-request workspace.
+ * @returns the request workspace, else the runtime default, else the configured default; undefined defers to the sco profile.
+ */
+workspaceOf(request: ScoWorkspaceRequest): string | undefined
+
+/**
+ * Replace the runtime defaults, which take precedence over the gateway config until replaced again.
+ * @param defaults - workspace and queue; an absent field falls back to the config, then the sco profile.
+ */
+setDefaults(defaults: ScoDefaults): void
 ```
 
 Source: [`packages/experimental/sco/src/index.ts`](../../packages/experimental/sco/src/index.ts)
+
+<a id="ctxscosubmit--scosubmit"></a>
+
+### `ctx.scoSubmit` — `ScoSubmit`
+
+Composes SSP jobs from named sources and templates and submits them through `ctx.sco`. Sources, resource options, and the page's default workspace and queue persist in the `sco_submit` storage domain; templates come from config. Saved defaults are applied to `ctx.sco` at start and withdrawn on disposal. Nothing in the `clusterConfig` namespace enters a model request; the model reaches the same records through the SSP job tools.
+
+```ts cordis-catalog
+/**
+ * List registered sources.
+ * @returns sources by name.
+ */
+async sources(): Promise<Record<string, ScoSource>>
+
+/**
+ * List configured templates.
+ * @returns templates by name.
+ */
+listTemplates(): Record<string, ScoJobTemplate>
+
+/**
+ * Register a new source.
+ * @param name - unused source name.
+ * @param source - locations to mount.
+ */
+async addSource(name: string, source: ScoSource): Promise<void>
+
+/**
+ * Replace a registered source.
+ * @param name - registered source name.
+ * @param source - new locations.
+ */
+async updateSource(name: string, source: ScoSource): Promise<void>
+
+/**
+ * Remove a registered source; templates that name it fail at their next submission.
+ * @param name - registered source name.
+ */
+async removeSource(name: string): Promise<void>
+
+/**
+ * Read the queues and machine types a workspace offers, querying the CLI only when nothing is cached or on `refresh`.
+ * @param request - workspace and refresh.
+ * @param signal - cancellation.
+ * @returns cached or freshly queried options.
+ */
+async resourceOptions(request: ScoResourceOptionsRequest = {}, signal?: AbortSignal): Promise<ScoResourceOptions>
+
+/**
+ * Expand a submission against the registered sources and configured templates without running the CLI.
+ * @param request - submission.
+ * @returns creation flags and the names they were composed from.
+ */
+async resolve(request: SubmitScoJobRequest): Promise<ScoResolvedSubmission>
+
+/**
+ * Expand and submit a job, or validate it with `dryRun`.
+ * A machine type absent from cached options fails before the CLI runs; a CLI failure that names a resource
+ * field refreshes the cached options before the error propagates.
+ * @param request - submission.
+ * @param signal - cancellation; a cancelled creation may still have been accepted remotely.
+ * @returns the merged `TrainingJob` for a dry run, otherwise the created name and CLI output, each with the flags used.
+ */
+async submit(request: SubmitScoJobRequest, signal?: AbortSignal): Promise<ScoSubmission>
+
+/**
+ * Read the configuration page state.
+ * @returns gateway defaults, sources, templates, and the options cached for the default workspace.
+ */
+@Remote async overview(): Promise<ScoConfigOverview>
+
+/**
+ * Follow the configuration page state: the overview now and after each source or option change.
+ * @param signal - stream lifetime.
+ * @returns complete overviews.
+ */
+@Remote({ mode: 'stream' }) async *follow(signal: AbortSignal): AsyncIterable<ScoConfigOverview>
+
+/**
+ * Register or replace a source from the configuration page.
+ * @param request - source name, locations, and whether to replace a registered source.
+ * @returns after the source is stored.
+ */
+@Remote async saveSource(request: ScoSourceSaveRequest): Promise<void>
+
+/**
+ * Remove a source from the configuration page.
+ * @param name - registered source name.
+ * @returns after the source is deleted.
+ */
+@Remote async deleteSource(name: string): Promise<void>
+
+/**
+ * Save the default workspace and queue for the current sco profile; they override the gateway config until changed.
+ * @param defaults - workspace and full queue id; a blank or absent field falls back to the gateway config, then the sco profile.
+ * @returns after the defaults are stored and applied.
+ */
+@Remote async saveDefaults(defaults: ScoDefaults): Promise<void>
+
+/**
+ * Query the queues and machine types of the default workspace again and cache them.
+ * @returns after the options are stored.
+ */
+@Remote async refreshOptions(): Promise<void>
+
+/**
+ * List the AFS volumes the sco credentials can see, for choosing where a source lives.
+ * @returns volumes with capacity and used percentage.
+ */
+@Remote volumes(): Promise<ScoAfsVolume[]>
+```
+
+Source: [`packages/experimental/sco-submit/src/index.ts`](../../packages/experimental/sco-submit/src/index.ts)
 
 <a id="sco-events"></a>
 
@@ -165,4 +324,21 @@ The CLI accepted a non-dry-run job creation; observers such as job monitors star
 ```
 
 Source: [`packages/experimental/sco/src/index.ts`](../../packages/experimental/sco/src/index.ts)
+
+<a id="scojob-submitted--emit"></a>
+
+#### `sco/job-submitted` — emit
+
+A submission created a job; observers can relate the job to its template, code ref, and data.
+
+```ts cordis-catalog
+/**
+ * A submission created a job; observers can relate the job to its template, code ref, and data.
+ * @mode emit
+ * @param event - created job name, workspace, and the names it was composed from.
+ */
+'sco/job-submitted'(event: ScoJobSubmitted): void
+```
+
+Source: [`packages/experimental/sco-submit/src/index.ts`](../../packages/experimental/sco-submit/src/index.ts)
 <!-- END GENERATED cordis-surface -->

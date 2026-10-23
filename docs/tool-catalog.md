@@ -45,7 +45,7 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`, `owning Agent session` | `tool/call`, `todo/write`, `tool/result` | - | todo_write is session-owned state; UIs render the latest todo/write event as a checklist. `allowParallelInProgress` is required with no default, so the catalog states its choice: `true`, whose description invites several `in_progress` items. A deployment choosing `false` receives the same tool with a description asking for exactly one active task. |
 | `@deepseek-ai/dsh-tool-working-directory` | `working_directory` | `ctx.tools`, `ctx.workingDirectory` | `tool/call`, `working-directory/change`, `user context for directory changes`, `tool/result` | - | Reads or changes the calling Session directory. Existing shells and processes retain their own directories; origin metadata and permission roots stay fixed. |
 | `@deepseek-ai/dsh-experimental-tool-worktree` | `create_worktree` | `ctx.tools`, `ctx.worktrees`, `a calling Agent` | `tool/call`, `Git branch and checkout`, `working-directory/change`, `tool/result` | - | Explicit experimental composition only. Creates a new branch and checkout from a pinned local commit under existing write permissions, then changes the Session directory. Leaving retains the branch and checkout. |
-| `@deepseek-ai/dsh-experimental-tool-sco` | `sco_job_create`, `sco_job_describe`, `sco_job_list`, `sco_job_logs`, `sco_job_stop`, `sco_job_workers` | `ctx.tools`, `ctx.sco`, `ctx.approval for submission and stop` | `tool/call`, `SenseCore SSP training jobs`, `tool/result` | - | Explicit experimental composition only. Runs the local sco CLI; submission without dryRun and stop ask the user unless confirmMutations is false. |
+| `@deepseek-ai/dsh-experimental-tool-sco` | `sco_job_create`, `sco_job_describe`, `sco_job_list`, `sco_job_logs`, `sco_job_stop`, `sco_job_submit`, `sco_job_workers`, `sco_resource_options`, `sco_source_add`, `sco_source_remove`, `sco_source_update`, `sco_sources_list`, `sco_volume_quota`, `sco_volumes_list` | `ctx.tools`, `ctx.sco`, `ctx.scoSubmit for sources and template submission`, `ctx.approval for submission and stop` | `tool/call`, `SenseCore SSP training jobs`, `registered sources`, `tool/result` | - | Explicit experimental composition only. Runs the local sco CLI; submission without dryRun and stop ask the user unless confirmMutations is false. Source, resource-option, and template-submission tools appear only while sco-submit is mounted. |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`, `ctx.workflowEngine`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents the script children)` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-workspace-dependencies` | `load_workspace_dependencies` | `ctx.tools` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`, `web_search` | `ctx.tools`, `ctx.web`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps. |
@@ -2735,10 +2735,6 @@ Submit a SenseCore SSP training job. Run with dryRun first to validate and see t
       "type": "integer",
       "description": "/dev/shm per pod in GiB, below memoryGib."
     },
-    "queueId": {
-      "type": "string",
-      "description": "Full queue resource id. Omit to use the configured default."
-    },
     "priority": {
       "type": "string",
       "enum": [
@@ -2746,6 +2742,18 @@ Submit a SenseCore SSP training job. Run with dryRun first to validate and see t
         "HIGH",
         "HIGHEST"
       ]
+    },
+    "maxAttempts": {
+      "type": "integer",
+      "description": "Retries after failure."
+    },
+    "enableQueuing": {
+      "type": "boolean",
+      "description": "Wait in queue when quota is insufficient."
+    },
+    "queueId": {
+      "type": "string",
+      "description": "Full queue resource id. Omit to use the configured default."
     },
     "env": {
       "type": "object",
@@ -2758,14 +2766,6 @@ Submit a SenseCore SSP training job. Run with dryRun first to validate and see t
       "items": {
         "type": "string"
       }
-    },
-    "maxAttempts": {
-      "type": "integer",
-      "description": "Retries after failure."
-    },
-    "enableQueuing": {
-      "type": "boolean",
-      "description": "Wait in queue when quota is insufficient."
     },
     "tensorboardLogPath": {
       "type": "string",
@@ -2934,6 +2934,145 @@ Stop one or more SSP training jobs. Asks the user first.
 
 Source: [`packages/experimental/tool-sco/src/index.ts`](../packages/experimental/tool-sco/src/index.ts)
 
+### `sco_job_submit`
+
+Submit an SSP job composed from a template and registered sources: data sources mount at their paths, the code source mounts the chosen ref directory under its root and the command runs there after its setup, and the output source mounts a directory named after the job under its root at the fixed output path. Request fields override the template. Run with dryRun first and show the user the resolved flags; a real submission asks the user. Pick machineType and queueId from sco_resource_options.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "New job name: job- prefix, lowercase letters, digits, and hyphens, at most 32 characters."
+    },
+    "template": {
+      "type": "string",
+      "description": "Template name from sco_sources_list."
+    },
+    "image": {
+      "type": "string",
+      "description": "Container image reference; overrides the template."
+    },
+    "imageType": {
+      "type": "string",
+      "enum": [
+        "OFFICIAL",
+        "PRIVATE",
+        "THIRD_PARTY"
+      ]
+    },
+    "code": {
+      "type": "string",
+      "description": "Code source name."
+    },
+    "ref": {
+      "type": "string",
+      "description": "Code ref directory. Omit for the source default."
+    },
+    "data": {
+      "type": "array",
+      "description": "Data source names.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "output": {
+      "type": "string",
+      "description": "Output source name."
+    },
+    "command": {
+      "type": "string",
+      "description": "Job command; overrides the template."
+    },
+    "extraArgs": {
+      "type": "string",
+      "description": "Arguments appended to the command."
+    },
+    "env": {
+      "type": "object",
+      "description": "Environment variables as string values.",
+      "additionalProperties": true
+    },
+    "framework": {
+      "type": "string",
+      "description": "Defaults to PYTORCH_DDP.",
+      "enum": [
+        "PYTORCH_DDP",
+        "MPI",
+        "RAY_JOB",
+        "TENSORFLOW_PS",
+        "FRAMEWORK_CUSTOM"
+      ]
+    },
+    "podCount": {
+      "type": "integer",
+      "description": "Pods. Defaults to 1."
+    },
+    "gpuCount": {
+      "type": "integer",
+      "description": "GPUs per pod. Defaults to 0."
+    },
+    "cpuCount": {
+      "type": "integer",
+      "description": "CPU cores per pod."
+    },
+    "memoryGib": {
+      "type": "integer",
+      "description": "Memory per pod in GiB."
+    },
+    "machineType": {
+      "type": "string",
+      "description": "Queue machine type code; comma-separate several."
+    },
+    "rdmaName": {
+      "type": "string"
+    },
+    "shmSizeGib": {
+      "type": "integer",
+      "description": "/dev/shm per pod in GiB, below memoryGib."
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "NORMAL",
+        "HIGH",
+        "HIGHEST"
+      ]
+    },
+    "maxAttempts": {
+      "type": "integer",
+      "description": "Retries after failure."
+    },
+    "enableQueuing": {
+      "type": "boolean",
+      "description": "Wait in queue when quota is insufficient."
+    },
+    "displayName": {
+      "type": "string",
+      "description": "Console display name."
+    },
+    "queueId": {
+      "type": "string",
+      "description": "Full queue resource id. Omit to use the configured default."
+    },
+    "workspace": {
+      "type": "string",
+      "description": "SSP workspace name. Omit to use the configured default."
+    },
+    "dryRun": {
+      "type": "boolean",
+      "description": "Validate and return the merged TrainingJob without submitting."
+    }
+  },
+  "required": [
+    "name"
+  ]
+}
+```
+
+Source: [`packages/experimental/tool-sco/src/index.ts`](../packages/experimental/tool-sco/src/index.ts)
+
 ### `sco_job_workers`
 
 List an SSP training job's current workers. Worker names select logs in sco_job_logs.
@@ -2959,7 +3098,246 @@ List an SSP training job's current workers. Worker names select logs in sco_job_
 
 Source: [`packages/experimental/tool-sco/src/index.ts`](../packages/experimental/tool-sco/src/index.ts)
 
-Explicit experimental composition only. Runs the local sco CLI; submission without dryRun and stop ask the user unless confirmMutations is false.
+### `sco_resource_options`
+
+Read the queues a workspace can submit to and each queue's CLI object, whose properties.machine_type_allocation lists the machine types allocated to it with their quota. Results are cached locally; set refresh only after a submission failed on machine type, queue, or quota, or when the user asks. Offer machine types and queues to the user as choices instead of asking them to type one.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "workspace": {
+      "type": "string",
+      "description": "SSP workspace name. Omit to use the configured default."
+    },
+    "refresh": {
+      "type": "boolean",
+      "description": "Query the cluster even when options are cached."
+    }
+  }
+}
+```
+
+Source: [`packages/experimental/tool-sco/src/index.ts`](../packages/experimental/tool-sco/src/index.ts)
+
+### `sco_source_add`
+
+Register a new data, code, or output source location on cluster storage. Ask the user for the volume and directory, offering volumes from sco_volumes_list; never guess them.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Source name: lowercase letters, digits, and hyphens."
+    },
+    "kind": {
+      "type": "string",
+      "description": "data: a dataset mounted at mountPath. code: snapshots under root/<ref>/, mounted at mountPath, where the command runs. output: job outputs under root/<job name>/, mounted at the fixed output path.",
+      "enum": [
+        "data",
+        "code",
+        "output"
+      ]
+    },
+    "volumeType": {
+      "type": "string",
+      "enum": [
+        "afs",
+        "aoss"
+      ]
+    },
+    "volumeId": {
+      "type": "string",
+      "description": "AFS volume UUID (afs)."
+    },
+    "bucket": {
+      "type": "string",
+      "description": "AOSS bucket (aoss)."
+    },
+    "endpoint": {
+      "type": "string",
+      "description": "AOSS endpoint host without port (aoss)."
+    },
+    "path": {
+      "type": "string",
+      "description": "Directory or prefix inside the volume (data); omit for the volume root."
+    },
+    "root": {
+      "type": "string",
+      "description": "Directory inside the volume holding one subdirectory per ref (code) or per job (output)."
+    },
+    "mountPath": {
+      "type": "string",
+      "description": "Absolute container path (data, code)."
+    },
+    "defaultRef": {
+      "type": "string",
+      "description": "Ref used when a submission names none (code)."
+    },
+    "setup": {
+      "type": "string",
+      "description": "Shell command run in the code directory before the job command (code)."
+    },
+    "description": {
+      "type": "string",
+      "description": "What the source holds."
+    }
+  },
+  "required": [
+    "name",
+    "kind",
+    "volumeType"
+  ]
+}
+```
+
+Source: [`packages/experimental/tool-sco/src/index.ts`](../packages/experimental/tool-sco/src/index.ts)
+
+### `sco_source_remove`
+
+Remove a registered source.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "name"
+  ]
+}
+```
+
+Source: [`packages/experimental/tool-sco/src/index.ts`](../packages/experimental/tool-sco/src/index.ts)
+
+### `sco_source_update`
+
+Replace every field of a registered source.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Source name: lowercase letters, digits, and hyphens."
+    },
+    "kind": {
+      "type": "string",
+      "description": "data: a dataset mounted at mountPath. code: snapshots under root/<ref>/, mounted at mountPath, where the command runs. output: job outputs under root/<job name>/, mounted at the fixed output path.",
+      "enum": [
+        "data",
+        "code",
+        "output"
+      ]
+    },
+    "volumeType": {
+      "type": "string",
+      "enum": [
+        "afs",
+        "aoss"
+      ]
+    },
+    "volumeId": {
+      "type": "string",
+      "description": "AFS volume UUID (afs)."
+    },
+    "bucket": {
+      "type": "string",
+      "description": "AOSS bucket (aoss)."
+    },
+    "endpoint": {
+      "type": "string",
+      "description": "AOSS endpoint host without port (aoss)."
+    },
+    "path": {
+      "type": "string",
+      "description": "Directory or prefix inside the volume (data); omit for the volume root."
+    },
+    "root": {
+      "type": "string",
+      "description": "Directory inside the volume holding one subdirectory per ref (code) or per job (output)."
+    },
+    "mountPath": {
+      "type": "string",
+      "description": "Absolute container path (data, code)."
+    },
+    "defaultRef": {
+      "type": "string",
+      "description": "Ref used when a submission names none (code)."
+    },
+    "setup": {
+      "type": "string",
+      "description": "Shell command run in the code directory before the job command (code)."
+    },
+    "description": {
+      "type": "string",
+      "description": "What the source holds."
+    }
+  },
+  "required": [
+    "name",
+    "kind",
+    "volumeType"
+  ]
+}
+```
+
+Source: [`packages/experimental/tool-sco/src/index.ts`](../packages/experimental/tool-sco/src/index.ts)
+
+### `sco_sources_list`
+
+List registered data, code, and output sources, configured job templates, and the fixed container path where every job mounts its output directory. Call before sco_job_submit to pick names.
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+Source: [`packages/experimental/tool-sco/src/index.ts`](../packages/experimental/tool-sco/src/index.ts)
+
+### `sco_volume_quota`
+
+List the directory quota rules of one AFS volume.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "volume": {
+      "type": "string",
+      "description": "Volume id from sco_volumes_list."
+    }
+  },
+  "required": [
+    "volume"
+  ]
+}
+```
+
+Source: [`packages/experimental/tool-sco/src/index.ts`](../packages/experimental/tool-sco/src/index.ts)
+
+### `sco_volumes_list`
+
+List the AFS storage volumes the user's sco credentials can see: id, name (when the console has one), totalCapacity, usedCapacity, usedPercent (binary units, 1TB = 1024GB), region, zone, endTime, and state. Use the id for sco_volume_quota and for data, code, and output sources.
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+Source: [`packages/experimental/tool-sco/src/index.ts`](../packages/experimental/tool-sco/src/index.ts)
+
+Explicit experimental composition only. Runs the local sco CLI; submission without dryRun and stop ask the user unless confirmMutations is false. Source, resource-option, and template-submission tools appear only while sco-submit is mounted.
 
 <a id="deepseek-aidsh-tool-workflow"></a>
 

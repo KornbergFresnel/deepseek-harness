@@ -8,6 +8,8 @@ const JOB_NAME = /^job-[a-z0-9-]{0,27}[a-z0-9]$/
 const ORDER_BY = /^[+-]?(created_at|duration)(,[+-]?(created_at|duration))*$/
 /** POSIX-style environment variable names. */
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
+/** Workspace, cluster, and queue names passed as positional arguments. */
+const RESOURCE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
 /** Volume mount types accepted by `--volume-mount`. */
 const VOLUME_MOUNT = /^PV_(AFS|AOSS):[^,]+$/
 
@@ -19,6 +21,17 @@ const VOLUME_MOUNT = /^PV_(AFS|AOSS):[^,]+$/
 export function jobName(name: string): string {
   if (!JOB_NAME.test(name)) throw new Error(`sco: job name "${name}" must start with "job-", use lowercase letters, digits, and hyphens, end with a letter or digit, and have at most 32 characters`)
   return name
+}
+
+/**
+ * Reject a positional resource name that is empty or could be read as an option.
+ * @param key - name kind for the error message.
+ * @param value - candidate name.
+ * @returns the unchanged name.
+ */
+export function resourceName(key: string, value: string): string {
+  if (!RESOURCE_NAME.test(value)) throw new Error(`sco: ${key} "${value}" must start with a letter or digit and use only letters, digits, ".", "_", and "-"`)
+  return value
 }
 
 function positiveInteger(key: string, value: number, min = 1, max = Number.MAX_SAFE_INTEGER): number {

@@ -530,6 +530,17 @@ button.crumb:hover {
 }
 
 /* Plugin options share the row, pushed to its right edge. */
+.heroContext {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.heroContext:empty {
+  display: none;
+}
+
 .heroOptions {
   display: flex;
   flex: none;

@@ -19,6 +19,10 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import ApprovalService from '@deepseek-ai/dsh-user-approval'
 import type { ApprovalOutcome, ApprovalRequest } from '@deepseek-ai/dsh-user-approval'
 import ScoGateway from '@deepseek-ai/dsh-experimental-sco'
+import ScoSubmit from '@deepseek-ai/dsh-experimental-sco-submit'
+import Storage from '@deepseek-ai/dsh-storage'
+import * as StorageDomain from '@deepseek-ai/dsh-storage-domain'
+import * as StorageJson from '@deepseek-ai/dsh-storage-json'
 import * as ToolSco from '../src/index.ts'
 import { fakeSco } from '../../sco/tests/fake-sco.ts'
 import type { FakeSco } from '../../sco/tests/fake-sco.ts'
@@ -35,7 +39,7 @@ afterEach(async () => {
   fake = undefined
 })
 
-async function boot(toolConfig: string[] = []): Promise<{ ctx: Context; agent: Agent }> {
+async function boot(toolConfig: string[] = [], submit = false): Promise<{ ctx: Context; agent: Agent }> {
   root = await realpath(await mkdtemp(join(tmpdir(), 'dsh-tool-sco-loader-')))
   fake = await fakeSco()
   const modules = new Map<string, unknown>([
@@ -48,6 +52,14 @@ async function boot(toolConfig: string[] = []): Promise<{ ctx: Context; agent: A
     ['@deepseek-ai/dsh-user-approval', ApprovalService],
     ['@deepseek-ai/dsh-subprocess-local', LocalSubprocessRuntime],
     ['@deepseek-ai/dsh-experimental-sco', ScoGateway],
+    ...submit
+      ? [
+        ['@deepseek-ai/dsh-storage', Storage],
+        ['@deepseek-ai/dsh-storage-json', StorageJson],
+        ['@deepseek-ai/dsh-storage-domain', StorageDomain],
+        ['@deepseek-ai/dsh-experimental-sco-submit', ScoSubmit],
+      ] as const
+      : [],
     ['@deepseek-ai/dsh-experimental-tool-sco', ToolSco],
     ['@deepseek-ai/dsh-agent-loop', AgentLoop],
   ])
@@ -56,6 +68,11 @@ async function boot(toolConfig: string[] = []): Promise<{ ctx: Context; agent: A
     ...name === '@deepseek-ai/dsh-experimental-sco' ? ['  config:', `    command: '${fake!.command}'`, '    workspace: team-a', '    maxOutputBytes: 1024'] : [],
     ...name === '@deepseek-ai/dsh-experimental-tool-sco' && toolConfig.length > 0 ? ['  config:', ...toolConfig.map(line => `    ${line}`)] : [],
     ...name === '@deepseek-ai/dsh-agent-loop' ? ['  config:', '    agents: []'] : [],
+    ...name === '@deepseek-ai/dsh-storage-json' ? ['  config:', `    root: '${join(root!, 'store')}'`] : [],
+    ...name === '@deepseek-ai/dsh-storage-domain' ? ['  config:', '    backend: json'] : [],
+    ...name === '@deepseek-ai/dsh-experimental-sco-submit'
+      ? ['  config:', '    templates:', '      wbt-train:', '        image: registry/rlh:wbt', '        code: rlh', '        output: outputs', '        command: python train.py']
+      : [],
   ]).join('\n') + '\n'
   const configPath = join(root, 'cordis.yml')
   await writeFile(configPath, config)
@@ -144,6 +161,29 @@ describe('SSP job tools through real Loader composition', () => {
     expect(ctx.tools.schemas().some(schema => schema.name.startsWith('sco_'))).toBe(false)
   })
 
+  it('lists AFS volumes with used percentages and reads quota rules without asking', async () => {
+    const { ctx, agent } = await boot()
+    let asked = 0
+    ctx.on('approval/request', () => {
+      asked += 1
+      return Promise.resolve<ApprovalOutcome>('rejected')
+    })
+    // SRM pages exceed this suite's 1 KiB output cap, so the fake answers with an empty resource page.
+    await writeFile(join(fake!.root, 'srm.json'), '[]')
+    const volumes = await call(ctx, agent, 'sco_volumes_list', {})
+    expect(volumes.value).toEqual([
+      expect.objectContaining({ id: 'vol-a', totalCapacity: '51200GB', usedCapacity: '43TB', usedPercent: 86 }),
+      expect.objectContaining({ id: 'vol-b', usedPercent: 3.2 }),
+      expect.objectContaining({ id: 'vol-c' }),
+      { id: 'vol-d' },
+    ])
+    expect(text(volumes)).toBe(JSON.stringify(volumes.value))
+    expect((await call(ctx, agent, 'sco_volume_quota', { volume: 'vol-a' })).value).toEqual([{ volume: 'vol-a', dir: '/data', limit: '10TB' }])
+    expect(asked).toBe(0)
+    expect(ctx.tools.get('sco_volumes_list')!.presentCall!({})).toMatchObject({ title: 'sco_volumes_list', kind: 'search' })
+    expect(ctx.tools.get('sco_volume_quota')!.presentCall!({ volume: 'vol-a' })).toMatchObject({ title: 'sco_volume_quota vol-a', kind: 'read' })
+  })
+
   it('submits without asking when mutation confirmation is off, and keeps a downstream denial', async () => {
     const { ctx, agent } = await boot(['confirmMutations: false'])
     let asked = 0
@@ -168,5 +208,58 @@ describe('SSP job tools through real Loader composition', () => {
     expect(denied.isError).toBe(true)
     expect(text(denied)).toContain('cluster access disabled')
     expect(asked).toBe(0)
+  })
+
+  it('registers sources, reads resource options, and submits from a template with approval', async () => {
+    const { ctx, agent } = await boot([], true)
+    const asked: ApprovalRequest[] = []
+    ctx.on('approval/request', (request) => {
+      asked.push(request)
+      return Promise.resolve<ApprovalOutcome>('allowed-once')
+    })
+    const code = { name: 'rlh', kind: 'code', volumeType: 'afs', volumeId: 'vol-code', root: 'code/rlh', mountPath: '/workspace/code', defaultRef: 'main', setup: 'pip install -e .' }
+    expect((await call(ctx, agent, 'sco_source_add', code)).value).toEqual({
+      name: 'rlh', source: { kind: 'code', volume: { type: 'afs', id: 'vol-code' }, root: 'code/rlh', mountPath: '/workspace/code', defaultRef: 'main', setup: 'pip install -e .' },
+    })
+    await call(ctx, agent, 'sco_source_add', { name: 'outputs', kind: 'output', volumeType: 'afs', volumeId: 'vol-out', root: 'outputs', description: 'checkpoints' })
+    await call(ctx, agent, 'sco_source_add', { name: 'motion', kind: 'data', volumeType: 'aoss', bucket: 'motion', endpoint: 'oss.local', mountPath: '/data', path: 'npz' })
+    await call(ctx, agent, 'sco_source_add', { name: 'raw', kind: 'data', volumeType: 'afs', volumeId: 'vol-raw', mountPath: '/raw' })
+    expect((await call(ctx, agent, 'sco_source_update', { name: code.name, kind: code.kind, volumeType: code.volumeType, volumeId: code.volumeId, root: code.root, mountPath: code.mountPath, defaultRef: 'v2' })).value).toMatchObject({ source: { defaultRef: 'v2' } })
+    expect((await call(ctx, agent, 'sco_source_remove', { name: 'raw' })).value).toEqual({ removed: 'raw' })
+    const listed = await call(ctx, agent, 'sco_sources_list', {})
+    expect(listed.value).toMatchObject({ sources: { rlh: { defaultRef: 'v2' }, outputs: { kind: 'output' }, motion: { kind: 'data' } }, templates: { 'wbt-train': { image: 'registry/rlh:wbt' } }, outputMountPath: '/outputs' })
+    expect(Object.keys((listed.value as { sources: object }).sources)).toEqual(['rlh', 'outputs', 'motion'])
+
+    expect(text(await call(ctx, agent, 'sco_source_add', { name: 'x', kind: 'data', volumeType: 'afs', mountPath: '/x' }))).toContain('volumeId is required for this source')
+    expect(text(await call(ctx, agent, 'sco_source_add', { name: 'x', kind: 'output', volumeType: 'afs', volumeId: 'v', root: 'o', mountPath: '/x' }))).toContain('mountPath does not apply to output sources')
+    expect(text(await call(ctx, agent, 'sco_source_add', { name: 'x', kind: 'data', volumeType: 'aoss', bucket: 'b', mountPath: '/x' }))).toContain('endpoint is required for this source')
+
+    const options = await call(ctx, agent, 'sco_resource_options', {})
+    expect(options.value).toMatchObject({ workspace: 'team-a', queues: [{ cluster: 'c1', queue: 'gpu-a' }, { cluster: 'c2', queue: 'cpu-b' }] })
+
+    const dryRun = await call(ctx, agent, 'sco_job_submit', { name: 'job-wbt', template: 'wbt-train', data: ['motion'], machineType: 'h1ls.rp.k60a', gpuCount: 8, env: { SEED: '1' }, dryRun: true })
+    expect(dryRun.value).toMatchObject({ kind: 'dry-run', resolved: { args: 'cd /workspace/code && python train.py', env: { SEED: '1' } } })
+    expect(asked).toHaveLength(0)
+    const created = await call(ctx, agent, 'sco_job_submit', { name: 'job-wbt', template: 'wbt-train', machineType: 'h1ls.rp.k60a', gpuCount: 8 })
+    expect(created.value).toMatchObject({ kind: 'created', name: 'job-wbt', output: 'created job-wbt' })
+    expect(asked.map(request => [request.toolName, request.reason])).toEqual([['sco_job_submit', 'submit SSP training job job-wbt']])
+    expect(text(await call(ctx, agent, 'sco_job_submit', { name: 'job-wbt', template: 'wbt-train', env: { N: 1 }, dryRun: true }))).toContain('env.N must be a string')
+
+    const tool = (name: string) => (args: Record<string, JsonValue>) => ctx.tools.get(name)!.presentCall!(args)
+    expect(tool('sco_sources_list')({})).toMatchObject({ title: 'sco_sources_list', kind: 'search' })
+    expect(tool('sco_source_add')(code)).toMatchObject({ title: 'sco_source_add rlh' })
+    expect(tool('sco_source_update')(code)).toMatchObject({ title: 'sco_source_update rlh' })
+    expect(tool('sco_source_remove')({ name: 'rlh' })).toMatchObject({ title: 'sco_source_remove rlh' })
+    expect(tool('sco_resource_options')({})).toMatchObject({ title: 'sco_resource_options' })
+    expect(tool('sco_resource_options')({ refresh: true })).toMatchObject({ title: 'sco_resource_options (refresh)' })
+    expect(tool('sco_job_submit')({ name: 'job-a', dryRun: true })).toMatchObject({ title: 'sco_job_submit job-a (dry run)' })
+    expect(tool('sco_job_submit')({ name: 'job-a' })).toMatchObject({ title: 'sco_job_submit job-a' })
+
+    const entry = [...ctx.loader.entries()].find(candidate => candidate.options.name === 'cordis:@deepseek-ai/dsh-experimental-sco-submit')
+    await entry!.fiber!.dispose()
+    expect(ctx.tools.schemas().map(schema => schema.name).filter(name => name.startsWith('sco_'))).toEqual([
+      'sco_job_list', 'sco_job_describe', 'sco_job_workers', 'sco_job_logs', 'sco_job_create', 'sco_job_stop',
+      'sco_volumes_list', 'sco_volume_quota',
+    ])
   })
 })

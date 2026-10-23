@@ -1,5 +1,5 @@
 ---
-description: "Model tools that list, inspect, submit, and stop SenseCore SSP training jobs, asking the user before remote changes."
+description: "Model tools that list, inspect, submit, and stop SenseCore SSP training jobs and compose jobs from registered sources and templates, asking the user before remote changes."
 kind: "package-bundle"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Let a model manage SenseCore SSP training jobs through the user's local `sco` CLI. Six tools list jobs, read a job, list its workers, read its logs, submit a job, and stop jobs. Submission and stop ask the user first by default; dry-run submission validates a job without asking.
+Let a model manage SenseCore SSP training jobs through the user's local `sco` CLI. Six tools list jobs, read a job, list its workers, read its logs, submit a job, and stop jobs, and two read AFS storage: volumes with capacity and a volume's directory quota rules. With [sco-submit](../sco-submit/README.md) mounted, six more tools register data, code, and output locations, read cached queue and machine-type options, and submit jobs composed from a template. Submission and stop ask the user first by default; dry-run submission validates a job without asking.
 
 ## Table of Contents
 
@@ -25,10 +25,11 @@ Let a model manage SenseCore SSP training jobs through the user's local `sco` CL
 <a id="use-this-package"></a>
 ## Use this package
 
-Add this package's bundle to a profile, or mount the function plugin after the [sco gateway](../sco/README.md) and the tool registry. Approval needs a composed approval service with an answerer, such as the Web application's prompt.
+Add this package's bundle to a profile, or mount the function plugin after the [sco gateway](../sco/README.md) and the tool registry; mount [sco-submit](../sco-submit/README.md) beside them for source and template tools. Approval needs a composed approval service with an answerer, such as the Web application's prompt.
 
 ```yaml
 - name: '@deepseek-ai/dsh-experimental-sco'
+- name: '@deepseek-ai/dsh-experimental-sco-submit'
 - name: '@deepseek-ai/dsh-experimental-tool-sco'
   config:
     confirmMutations: true
@@ -42,8 +43,15 @@ Add this package's bundle to a profile, or mount the function plugin after the [
 | `sco_job_logs` | `{ text, truncated }` for one log round |
 | `sco_job_create` | `{ kind: 'dry-run', job }` or `{ kind: 'created', name, output }` |
 | `sco_job_stop` | `{ names, output }` |
+| `sco_volumes_list` | Volume records with `id`, capacities, `usedPercent` when the capacities parse, region, zone, end time, and state |
+| `sco_volume_quota` | JSON directory quota rules for one volume |
+| `sco_sources_list` | `{ sources, templates, outputMountPath }` (needs sco-submit) |
+| `sco_source_add`, `sco_source_update` | `{ name, source }` (needs sco-submit) |
+| `sco_source_remove` | `{ removed }` (needs sco-submit) |
+| `sco_resource_options` | Cached `{ workspace, fetchedAt, queues }` (needs sco-submit) |
+| `sco_job_submit` | `{ kind: 'dry-run', resolved, job }` or `{ kind: 'created', resolved, name, output }` (needs sco-submit) |
 
-With `confirmMutations` (default `true`), `sco_job_create` without `dryRun: true` and every `sco_job_stop` ask the user through `ctx.approval` after other pre-execute listeners allow the call; a denial from another listener stands without asking. Under the `never` approval policy these calls are rejected. Set `confirmMutations: false` only for unattended runs that may submit and stop jobs freely. The [generated tool catalog](../../../docs/tool-catalog.md#deepseek-aidsh-experimental-tool-sco) owns the exact schemas and model-facing descriptions.
+With `confirmMutations` (default `true`), `sco_job_create` and `sco_job_submit` without `dryRun: true` and every `sco_job_stop` ask the user through `ctx.approval` after other pre-execute listeners allow the call; a denial from another listener stands without asking. Under the `never` approval policy these calls are rejected. Volume reads and source registration do not ask. `usedPercent` treats capacity units as binary (`1TB` = `1024GB`). Set `confirmMutations: false` only for unattended runs that may submit and stop jobs freely. The [generated tool catalog](../../../docs/tool-catalog.md#deepseek-aidsh-experimental-tool-sco) owns the exact schemas and model-facing descriptions.
 
 -----
 
@@ -53,7 +61,7 @@ With `confirmMutations` (default `true`), `sco_job_create` without `dryRun: true
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-[`cordis.patch.yml`](cordis.patch.yml) inserts the `sco` gateway row and the `tool-sco` consumer row. [`src/index.ts`](src/index.ts) registers six typed tools that forward to `ctx.sco` and render their canonical values as JSON, except logs, which render as text with a truncation marker. The approval gate is a `tools/pre-execute` listener that delegates first and converts only an `allow` into `ask`. Host presentation uses generic cards. Disposal unregisters the tools and the listener.
+[`cordis.patch.yml`](cordis.patch.yml) inserts the `sco` gateway, `sco-submit`, and `tool-sco` rows. [`src/index.ts`](src/index.ts) registers eight typed tools that forward to `ctx.sco` and render their canonical values as JSON, except logs, which render as text with a truncation marker. Inside `ctx.inject(['scoSubmit'])` it registers the source, option, and submission tools, which forward to `ctx.scoSubmit` and disappear when that service unloads; source tools take flat arguments and reject fields the source kind does not use. The approval gate is a `tools/pre-execute` listener that delegates first and converts only an `allow` into `ask`. Host presentation uses generic cards. Disposal unregisters the tools and the listener.
 
 </details>
 
@@ -63,6 +71,7 @@ With `confirmMutations` (default `true`), `sco_job_create` without `dryRun: true
 ## Further Exploration
 
 - [sco gateway](../sco/README.md) — configuration, CLI mapping, and failure behavior.
+- [sco-submit](../sco-submit/README.md) — sources, templates, resource-option caching, and expansion rules.
 - [Approval subsystem](../../../docs/subsystems/approval.md) — `ask` and `never` policies and answerers.
 - [Tool authoring](../../../docs/cookbook/adding-a-tool.md) — canonical results and pre-execute policy.
 
@@ -75,11 +84,11 @@ With `confirmMutations` (default `true`), `sco_job_create` without `dryRun: true
 
 #### What the model sees
 
-The [tool catalog](../../../docs/tool-catalog.md#deepseek-aidsh-experimental-tool-sco) defines the six tools. Read results contain the cluster's JSON; log results contain log text, prefixed with `[earlier output truncated]` when only the tail is kept. A submission or stop the user rejects fails with the approval denial.
+The [tool catalog](../../../docs/tool-catalog.md#deepseek-aidsh-experimental-tool-sco) defines the tools. `sco_resource_options` and `sco_job_submit` tell the model to offer machine types and queues as choices and to dry-run first; a dry-run result shows the expanded mounts and startup command in `resolved`. Read results contain the cluster's JSON; log results contain log text, prefixed with `[earlier output truncated]` when only the tail is kept. A submission or stop the user rejects fails with the approval denial.
 
 #### Token effect
 
-The six schemas have a fixed per-request cost while mounted. Each call appends its arguments and result to tool history; listings and logs are bounded by the gateway's `maxOutputBytes`.
+The eight job and volume schemas, plus six more while sco-submit is mounted, have a fixed per-request cost. Each call appends its arguments and result to tool history; listings and logs are bounded by the gateway's `maxOutputBytes`.
 
 #### KV Cache effect
 
@@ -91,6 +100,7 @@ Unchanged tool schemas retain their existing prefix. Calls append after prior hi
 
 - **Gateway limits apply** — the [gateway limitations](../sco/README.md#known-limitations-and-deferred-work) bound what the tools can submit and read.
 - **No monitoring loop** — the tools read state on request; waiting for a job to finish or reacting to failures needs repeated calls.
+- **Sources take full replacements** — `sco_source_update` replaces every field; there is no partial edit.
 
 <a id="dev-note"></a>
 ### Dev Note

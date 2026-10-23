@@ -25,7 +25,7 @@ Poll watched SSP training jobs on the Host through [`ctx.sco`](../sco/README.md)
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount the service beside the SSP gateway and a `storageDomain` provider, and add the page package for the Web client. [`sco.patch.yml`](sco.patch.yml) adds the gateway, the SSP job tools, this service, and the page to the Web profile: fill in the `sco` path and workspace, then run `pnpm dsh web --patch packages/experimental/cluster-monitor/sco.patch.yml`.
+Mount the service beside the SSP gateway and a `storageDomain` provider, and add the page package for the Web client. [`sco.patch.yml`](sco.patch.yml) adds the gateway, the SSP job tools, this service, both cluster pages, and the Git branch chip to the Web profile: fill in the `sco` path, then run `pnpm dsh web --patch packages/experimental/cluster-monitor/sco.patch.yml`.
 
 ```yaml
 - name: '@deepseek-ai/dsh-experimental-sco'

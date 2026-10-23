@@ -5,7 +5,7 @@ import { RemoteStreamCarrierError } from '@deepseek-ai/dsh-api-gateway/client'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { ClusterWatchId, ClusterWatchRow } from '@deepseek-ai/dsh-experimental-cluster-monitor/types'
 import { expect, it, onTestFinished, vi } from 'vitest'
-import { observeJob, observeWatchList } from '../src/client/source.ts'
+import { observeJob, observeOverview, observeWatchList } from '../src/client/source.ts'
 
 const id = brandString<ClusterWatchId>('w1')
 const row: ClusterWatchRow = { id, name: 'job-wbt', origin: 'manual', phase: 'running', rawState: 'Running', watchedAt: 't', latest: {} }
@@ -13,7 +13,7 @@ const row: ClusterWatchRow = { id, name: 'job-wbt', origin: 'manual', phase: 'ru
 function fixture(failure?: unknown) {
   const abort = new AbortController(), release = Promise.withResolvers<undefined>(), accept = vi.fn()
   const opened: RemoteStreamOptions<unknown>[] = []
-  const follow = vi.fn(), followJob = vi.fn()
+  const follow = vi.fn(), followJob = vi.fn(), followConfig = vi.fn()
   const stream = {
     signal: abort.signal,
     async *[Symbol.asyncIterator]() {
@@ -26,10 +26,10 @@ function fixture(failure?: unknown) {
   // Only the Gateway-owned transport is replaced; the mirror publication remains real.
   const ctx = new Context()
   onTestFinished(async () => { await ctx.fiber.dispose() })
-  ctx.provide('remote', { cluster: { follow, followJob },
+  ctx.provide('remote', { cluster: { follow, followJob }, clusterConfig: { follow: followConfig },
     $stream: (options: RemoteStreamOptions<unknown>) => { opened.push(options); return stream },
   })
-  return { ctx, opened, follow, followJob, accept, release }
+  return { ctx, opened, follow, followJob, followConfig, accept, release }
 }
 
 it('publishes each Host value, opens the matching stream, and reports a carrier loss without dropping the value', async () => {
@@ -50,6 +50,12 @@ it('publishes each Host value, opens the matching stream, and reports a carrier 
   expect(b.followJob).toHaveBeenCalledWith(id, signal)
   expect(b.opened[1]!.name).toBe('Cluster job w1')
   await job.dispose()
+
+  const overview = observeOverview(b.ctx)
+  b.opened[2]!.open(signal)
+  expect(b.followConfig).toHaveBeenCalledWith(signal)
+  expect(b.opened[2]!.name).toBe('Cluster configuration')
+  await overview.dispose()
 })
 
 it.each([new Error('invalid row'), 'invalid row'])('reports a terminal stream failure', async (failure) => {

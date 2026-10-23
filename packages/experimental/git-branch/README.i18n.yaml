@@ -1,0 +1,37 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/git-branch/README.md
+/:
+  en: f28b1362b49fef8f
+  zh: 5f793ec88a77e824
+/deepseek-ai-dsh-experimental-git-branch:
+  en: 53d50329658f96a1
+  zh: 26c8e42aad84b360
+/deepseek-ai-dsh-experimental-git-branch/summary:
+  en: 1871acc461316190
+  zh: dfd32c0e96265bd7
+/deepseek-ai-dsh-experimental-git-branch/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 2f8a621b991260a1
+/deepseek-ai-dsh-experimental-git-branch/use-this-package:
+  en: 29286ca4abc3040c
+  zh: b241ed9e347f54eb
+/deepseek-ai-dsh-experimental-git-branch/understand-the-implementation:
+  en: b320e4ae336e75ab
+  zh: 0cc8dfb2b6e160c0
+/deepseek-ai-dsh-experimental-git-branch/further-exploration:
+  en: 04e5857c298b1b81
+  zh: 38df4aa32b5c3659
+/deepseek-ai-dsh-experimental-git-branch/model-experience:
+  en: 9bb68e3f11b1d2f2
+  zh: 729fb77aec7520fe
+/deepseek-ai-dsh-experimental-git-branch/model-experience/kv-cache-effect:
+  en: e277b74f9b721f5e
+  zh: 014c91db5c8570d0
+/deepseek-ai-dsh-experimental-git-branch/known-limitations-and-deferred-work:
+  en: 82de3ec63f8b55e4
+  zh: 8347216619c8f795
+/deepseek-ai-dsh-experimental-git-branch/known-limitations-and-deferred-work/dev-note:
+  en: 0225ba087c5266f3
+  zh: 9c1d441532d6e9e6

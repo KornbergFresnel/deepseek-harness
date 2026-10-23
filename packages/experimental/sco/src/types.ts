@@ -15,9 +15,17 @@ export type ScoImageType = 'OFFICIAL' | 'PRIVATE' | 'THIRD_PARTY'
 export type ScoJobFilterField = 'name' | 'display_name' | 'state' | 'queue_id' | 'priority' | 'framework'
 
 /** Workspace selection shared by every SSP job operation; omitted values use the configured default, then the sco profile. */
-export interface ScoWorkspaceRequest {
+export type ScoWorkspaceRequest = {
   /** SSP workspace name. */
   workspace?: string
+}
+
+/** Default workspace and queue; an absent field leaves the next default in effect. */
+export type ScoDefaults = {
+  /** SSP workspace name. */
+  workspace?: string
+  /** Full queue resource id. */
+  queueId?: string
 }
 
 /** One `--filter` term; several terms combine with AND. */
@@ -56,8 +64,8 @@ export interface ScoJobLogs {
   truncated: boolean
 }
 
-/** Parameterized training-job creation, mapped onto `sco ssp jobs create <name>` flags. */
-export interface CreateScoJobRequest extends ScoWorkspaceRequest {
+/** Parameterized training-job creation, mapped onto `sco ssp jobs create <name>` flags; a type alias so it is a JSON value. */
+export type CreateScoJobRequest = ScoWorkspaceRequest & {
   /** Job name: `job-` prefix, lowercase letters, digits, and hyphens, at most 32 characters. */
   name: string
   /** Console display name. */
@@ -91,7 +99,7 @@ export interface CreateScoJobRequest extends ScoWorkspaceRequest {
   /** Container environment variables. */
   env?: Readonly<Record<string, string>>
   /** Volume mounts in the CLI `PV_AFS:<uuid>:<path>[:<subdir>]` or `PV_AOSS:...` form. */
-  volumeMounts?: readonly string[]
+  volumeMounts?: string[]
   /** Maximum retry attempts after failure (VcJob frameworks only). */
   maxAttempts?: number
   /** Queue when quota is insufficient instead of failing. */
@@ -121,4 +129,28 @@ export interface ScoJobCreated {
   name: string
   /** Workspace named on the command line; absent when the sco profile supplied it. */
   workspace?: string
+}
+
+/** One AFS volume from `sco afs volumes list --format=json`; absent fields were missing or empty in the CLI output. */
+export type ScoAfsVolume = {
+  /** Volume id used by `--volume-mount` and `list-dir-quota`. */
+  id: string
+  /** Console name. */
+  name?: string
+  /** Storage backend, such as `OCEANSTOR`. */
+  type?: string
+  /** Total capacity as printed, such as `51200GB`. */
+  totalCapacity?: string
+  /** Used capacity as printed, such as `43TB`. */
+  usedCapacity?: string
+  /** Used percentage of total with one decimal, counting `1TB` as `1024GB`; absent unless both capacities parse and total is non-zero. */
+  usedPercent?: number
+  /** Region name. */
+  region?: string
+  /** Zone name. */
+  zone?: string
+  /** Expiry time as printed. */
+  endTime?: string
+  /** Volume state, such as `ACTIVE`. */
+  state?: string
 }

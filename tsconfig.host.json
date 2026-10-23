@@ -366,6 +366,8 @@
     { "path": "./packages/experimental/sco" },
     { "path": "./packages/experimental/tool-sco" },
     { "path": "./packages/experimental/cluster-monitor" },
+    { "path": "./packages/experimental/sco-submit" },
+    { "path": "./packages/experimental/git-branch" },
     { "path": "./packages/session/tool-working-directory" },
     { "path": "./packages/session/session-title-llm" },
     { "path": "./packages/session/session-title-first-prompt-llm" },

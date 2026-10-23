@@ -1,9 +1,10 @@
-import { rm } from 'node:fs/promises'
+import { rm, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import ScoGateway from '../src/index.ts'
-import type { Config } from '../src/index.ts'
+import type { Config, CreateScoJobRequest } from '../src/index.ts'
 import { createArgv, listArgv, logsArgv } from '../src/argv.ts'
 import { fakeSco } from './fake-sco.ts'
 import type { FakeSco } from './fake-sco.ts'
@@ -71,16 +72,32 @@ describe('SSP job operations through the sco CLI', () => {
     expect((await fake.calls())[0]).toEqual(['ssp', 'jobs', 'stream-logs', 'job-wbt', '--worker-name=job-wbt-worker-0', '--container-name=main'])
   })
 
+  it('lets runtime defaults override the configured workspace and queue until replaced', async () => {
+    const { ctx, fake } = await gateway({ workspace: 'team-a', queueId: '/queues/default' })
+    expect(ctx.sco.configuredDefaults).toEqual({ workspace: 'team-a', queueId: '/queues/default' })
+    ctx.sco.setDefaults({ workspace: 'team-b', queueId: '/queues/page' })
+    expect([ctx.sco.workspaceOf({}), ctx.sco.workspaceOf({ workspace: 'team-c' }), ctx.sco.queueId]).toEqual(['team-b', 'team-c', '/queues/page'])
+    await ctx.sco.createJob({ name: 'job-wbt', image: 'img', args: 'run', dryRun: true })
+    expect((await fake.calls())[0]).toEqual(expect.arrayContaining(['--queue-id=/queues/page', '--workspace-name=team-b']))
+    ctx.sco.setDefaults({ queueId: '/queues/page' })
+    expect(ctx.sco.workspaceOf({})).toBe('team-a')
+    expect(() => { ctx.sco.setDefaults({ workspace: ' ' }) }).toThrow('sco: default workspace must not be empty')
+    expect(ctx.sco.queueId).toBe('/queues/page')
+    ctx.sco.setDefaults({})
+    expect(ctx.sco.queueId).toBe('/queues/default')
+  })
+
   it('creates jobs from flags, returning the merged spec for a dry run and the CLI output otherwise', async () => {
     const { ctx, fake } = await gateway({ queueId: '/queues/default' })
+    expect(ctx.sco.queueId).toBe('/queues/default')
     const created: unknown[] = []
     ctx.on('sco/job-created', (event) => { created.push(event) })
-    const request = {
+    const request: CreateScoJobRequest = {
       name: 'job-wbt', displayName: 'wbt', image: 'registry/rlh:wbt', imageType: 'PRIVATE', args: 'python -m train --flag=-1',
       framework: 'PYTORCH_DDP', podCount: 1, gpuCount: 8, cpuCount: 64, memoryGib: 512, machineType: 'h1ls.rp.k60a', rdmaName: 'rdma0',
       shmSizeGib: 64, priority: 'HIGH', env: { WANDB_MODE: 'offline' }, volumeMounts: ['PV_AFS:0000:/data:/train'], maxAttempts: 0,
       enableQueuing: true, tensorboardLogPath: '/data/tb',
-    } as const
+    }
     expect(await ctx.sco.createJob({ ...request, dryRun: true })).toEqual({ kind: 'dry-run', job: { name: 'job-wbt', spec: {} } })
     expect(await ctx.sco.createJob({ ...request, queueId: '/queues/override', workspace: 'team-a' }))
       .toEqual({ kind: 'created', name: 'job-wbt', output: 'created job-wbt' })
@@ -123,6 +140,64 @@ describe('SSP job operations through the sco CLI', () => {
     await new Promise(resolve => setTimeout(resolve, 50))
     await ctx.fiber.dispose()
     await disposed
+  })
+
+  it('lists workspace queues and reads one queue, requiring a resolvable workspace', async () => {
+    const { ctx, fake } = await gateway({ profile: 'pjlab' })
+    expect(ctx.sco.profile).toBe('pjlab')
+    await expect(ctx.sco.listQueues()).rejects.toThrow('listing queues needs a workspace')
+    expect(await ctx.sco.listQueues({ workspace: 'team-a' })).toHaveLength(3)
+    expect(await ctx.sco.describeQueue('c1', 'gpu-a')).toEqual({ name: 'gpu-a', workloads: [{ spec_code: 'h1ls.rp.k60a' }] })
+    await expect(ctx.sco.listQueues({ workspace: 'ws-fail' })).rejects.toThrow('sco ssp workspaces list-queues failed (5): workspace not found')
+    await expect(ctx.sco.describeQueue('--help', 'q')).rejects.toThrow('cluster "--help" must start with a letter or digit')
+    expect(await fake.calls()).toEqual([
+      ['--profile=pjlab', 'ssp', 'workspaces', 'list-queues', 'team-a', '--format=json'],
+      ['--profile=pjlab', 'ssp', 'queues', 'get', 'c1', 'gpu-a', '--format=json'],
+      ['--profile=pjlab', 'ssp', 'workspaces', 'list-queues', 'ws-fail', '--format=json'],
+    ])
+    expect(ctx.sco.workspaceOf({})).toBeUndefined()
+  })
+
+  it('lists AFS volumes and one volume\'s directory quota rules as the CLI\'s JSON', async () => {
+    const { ctx, fake } = await gateway({ profile: 'pjlab' })
+    expect(await ctx.sco.listVolumes()).toEqual([
+      { id: 'vol-a', type: 'OCEANSTOR', totalCapacity: '51200GB', usedCapacity: '43TB', usedPercent: 86, state: 'ACTIVE' },
+      { id: 'vol-b', name: 'afs-team', type: 'OCEANSTOR', totalCapacity: '500GB', usedCapacity: '16GB', usedPercent: 3.2, state: 'ACTIVE' },
+      { id: 'vol-c', name: 'shared data', type: 'OCEANSTOR', totalCapacity: '0GB', usedCapacity: '0GB', state: 'ACTIVE' },
+      { id: 'vol-d' },
+    ])
+    const srm = (token: number) => ['--profile=pjlab', 'srm', 'resources', 'list', `--page-token=${token}`, '--page-size=100', '--format=json']
+    expect((await fake.calls()).slice(1)).toEqual([srm(1), srm(2)])
+    expect(ctx.sco.queueId).toBeUndefined()
+    await writeFile(join(fake.root, 'volumes.json'), JSON.stringify({ volumes: [] }))
+    await expect(ctx.sco.listVolumes()).rejects.toThrow('returned JSON that is not an array')
+    await writeFile(join(fake.root, 'volumes.json'), JSON.stringify([{ ID: '' }]))
+    await expect(ctx.sco.listVolumes()).rejects.toThrow('returned an entry without a string ID: {"ID":""}')
+    await writeFile(join(fake.root, 'volumes.json'), JSON.stringify(['note']))
+    await expect(ctx.sco.listVolumes()).rejects.toThrow('without a string ID: "note"')
+    await writeFile(join(fake.root, 'volumes.json'), JSON.stringify([{ ID: 'vol-a', Name: 'named' }]))
+    expect(await ctx.sco.listVolumes()).toEqual([{ id: 'vol-a', name: 'named' }])
+    await rm(join(fake.root, 'volumes.json'))
+    expect(await ctx.sco.listDirectoryQuotas('vol-a')).toEqual([{ volume: 'vol-a', dir: '/data', limit: '10TB' }])
+    await expect(ctx.sco.listDirectoryQuotas('-h')).rejects.toThrow('volume "-h" must start with a letter or digit')
+    expect((await fake.calls()).slice(3)).toEqual([
+      ...Array.from({ length: 4 }, () => ['--profile=pjlab', 'afs', 'volumes', 'list', '--page-size=1000', '--format=json']),
+      ['--profile=pjlab', 'afs', 'volumes', 'list-dir-quota', '--instance=vol-a', '--format=json'],
+    ])
+  })
+
+  it('stops paging SRM on a repeated page and fails on SRM output it cannot read', async () => {
+    const { ctx, fake } = await gateway()
+    await writeFile(join(fake.root, 'srm-repeat'), '')
+    expect(ctx.sco.configuredDefaults).toEqual({})
+    expect((await ctx.sco.listVolumes()).map(volume => volume.name)).toEqual([undefined, undefined, undefined, undefined])
+    expect((await fake.calls()).filter(argv => argv.includes('srm'))).toHaveLength(2)
+    await writeFile(join(fake.root, 'srm.json'), JSON.stringify({ items: [] }))
+    await expect(ctx.sco.listVolumes()).rejects.toThrow('sco srm resources list returned JSON that is not an array')
+    await writeFile(join(fake.root, 'srm.json'), JSON.stringify([[]]))
+    await expect(ctx.sco.listVolumes()).rejects.toThrow('sco srm resources list returned a non-object entry: []')
+    await writeFile(join(fake.root, 'srm.json'), JSON.stringify([]))
+    expect(await ctx.sco.listVolumes()).toHaveLength(4)
   })
 
   it('fails loud on invalid configuration', async () => {
