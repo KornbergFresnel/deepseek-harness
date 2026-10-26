@@ -193,10 +193,11 @@ Every package below exports a Cordis plugin that a bundle patch can name in a Lo
 | `@deepseek-ai/dsh-experimental-claude-code-mods` | yes | Experimental bridge: load Claude Code mods (hooks modules) and run their hook chains on DeepSeek Harness extension points |
 | `@deepseek-ai/dsh-experimental-client-ui-agent-team` | no | Web Agent Teams roster, task board, and teammate navigation |
 | `@deepseek-ai/dsh-experimental-client-ui-claude-code-mods` | no | Web band above the prompt for Claude Code mods: draws each session's mod tree and sends button presses back to the bridge |
-| `@deepseek-ai/dsh-experimental-client-ui-cluster-monitor` | no | Browser pages that list watched SSP jobs with their state, training curves, and logs, and edit the sources used to submit jobs |
+| `@deepseek-ai/dsh-experimental-client-ui-cluster-monitor` | no | Browser pages that list watched SSP jobs with their state, training curves, and logs, show the current Session's jobs in the right sidebar, edit the sources used to submit jobs, render the in-chat job configuration form, and manage saved configurations |
 | `@deepseek-ai/dsh-experimental-client-ui-cot-translation` | yes | Optional machine translation of expanded reasoning, preserving original Session text |
 | `@deepseek-ai/dsh-experimental-client-ui-git-branch` | no | Show the Git branch of a new Session's working directory beside the workspace picker and switch it from a menu |
 | `@deepseek-ai/dsh-experimental-client-ui-voice-input` | no | Record speech and insert editable text into the conversation draft |
+| `@deepseek-ai/dsh-experimental-cluster-metrics-wandb` | yes | Weights & Biases metric source for the cluster job monitor: training curves from a run's history |
 | `@deepseek-ai/dsh-experimental-cluster-monitor` | yes | Watch SenseCore SSP jobs through the local sco CLI and serve their state, training curves, and logs to the Web client |
 | `@deepseek-ai/dsh-experimental-computer-use-cua-driver-mcp` | yes | Experimental computer use through an installed Cua Driver MCP executable |
 | `@deepseek-ai/dsh-experimental-computer-use-cua-driver-native` | no | Experimental computer-use provider embedding the Cua Driver native npm SDK |

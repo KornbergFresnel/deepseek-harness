@@ -59,7 +59,8 @@ Watches SSP jobs and serves their state, training curves, and log tails to brows
 
 /**
  * Start watching a job, or return the existing watch of the same job and workspace.
- * @param request - job name and optional workspace.
+ * A Session named by the request attaches to an existing watch that has none.
+ * @param request - job name, optional workspace, and optional Session.
  * @returns the watch row.
  */
 @Remote async watch(request: ClusterWatchRequest): Promise<ClusterWatchRow>
@@ -77,6 +78,28 @@ Watches SSP jobs and serves their state, training curves, and log tails to brows
  * @returns after the poll is stored.
  */
 @Remote async refresh(watchId: ClusterWatchId): Promise<void>
+
+/**
+ * List the registered metric source kinds.
+ * @returns kinds in registration order, starting with `logs`.
+ */
+@Remote metricSources(): string[]
+
+/**
+ * Change a watch's description or metric source. A different source clears the curves and polls the job's logs again.
+ * @param watchId - watch id from a row.
+ * @param changes - fields to change.
+ * @returns the updated row.
+ */
+@Remote async configure(watchId: ClusterWatchId, changes: ClusterWatchChanges): Promise<ClusterWatchRow>
+
+/**
+ * Register a metric source kind. Watches name it in `metrics.kind`; one that names a kind no plugin registers reports that on every poll.
+ * @param kind - source kind; `logs` and every registered kind are taken.
+ * @param provider - option validation and the metric read.
+ * @returns disposer that unregisters the kind.
+ */
+registerMetricSource(kind: string, provider: ClusterMetricProvider): () => void
 ```
 
 Source: [`packages/experimental/cluster-monitor/src/index.ts`](../../packages/experimental/cluster-monitor/src/index.ts)
@@ -128,10 +151,11 @@ async readLogs(name: string, request: ReadScoJobLogsRequest = {}, signal?: Abort
  * Creation is not idempotent: an existing name fails in the CLI.
  * @param request - job specification.
  * @param signal - cancellation; a cancelled creation may still have been accepted remotely.
+ * @param origin - Session that requested the creation and the job's description, copied into `sco/job-created`.
  * @returns the merged `TrainingJob` for a dry run, otherwise the created name and CLI output.
  * A real creation emits `sco/job-created` after the CLI succeeds.
  */
-async createJob(request: CreateScoJobRequest, signal?: AbortSignal): Promise<ScoJobCreation>
+async createJob(request: CreateScoJobRequest, signal?: AbortSignal, origin: ScoCallOrigin = {}): Promise<ScoJobCreation>
 
 /**
  * Stop up to 100 training jobs.
@@ -251,9 +275,10 @@ async resolve(request: SubmitScoJobRequest): Promise<ScoResolvedSubmission>
  * field refreshes the cached options before the error propagates.
  * @param request - submission.
  * @param signal - cancellation; a cancelled creation may still have been accepted remotely.
+ * @param origin - Session that requested the submission, passed to `createJob`.
  * @returns the merged `TrainingJob` for a dry run, otherwise the created name and CLI output, each with the flags used.
  */
-async submit(request: SubmitScoJobRequest, signal?: AbortSignal): Promise<ScoSubmission>
+async submit(request: SubmitScoJobRequest, signal?: AbortSignal, origin: ScoCallOrigin = {}): Promise<ScoSubmission>
 
 /**
  * Read the configuration page state.
@@ -266,7 +291,7 @@ async submit(request: SubmitScoJobRequest, signal?: AbortSignal): Promise<ScoSub
  * @param signal - stream lifetime.
  * @returns complete overviews.
  */
-@Remote({ mode: 'stream' }) async *follow(signal: AbortSignal): AsyncIterable<ScoConfigOverview>
+@Remote({ mode: 'stream' }) follow(signal: AbortSignal): AsyncIterable<ScoConfigOverview>
 
 /**
  * Register or replace a source from the configuration page.
@@ -300,7 +325,52 @@ async submit(request: SubmitScoJobRequest, signal?: AbortSignal): Promise<ScoSub
  * @returns volumes with capacity and used percentage.
  */
 @Remote volumes(): Promise<ScoAfsVolume[]>
+
+/**
+ * List saved workload configurations.
+ * @returns configurations by name.
+ */
+async configs(): Promise<Record<string, ScoSavedConfig>>
+
+/**
+ * Save a workload configuration for later forms to load.
+ * @param request - name, kind, settings, and whether to replace a saved configuration of the same name.
+ * @returns after the configuration is stored.
+ */
+@Remote async saveConfig(request: ScoConfigSaveRequest): Promise<void>
+
+/**
+ * Delete a saved workload configuration.
+ * @param name - saved configuration name.
+ * @returns after the configuration is deleted.
+ */
+@Remote async deleteConfig(name: string): Promise<void>
+
+/**
+ * Open a configuration form in the chat row of a tool call and wait until the user confirms or cancels it.
+ * @param request - tool call, Session, kind, proposed values, and an optional saved configuration to suggest.
+ * @param signal - the tool call's lifetime; aborting closes the form and rejects with the abort reason.
+ * @returns the confirmed values, with the configuration loaded and the name saved under, or a cancellation.
+ */
+async askForm(request: Omit<ScoConfigForm, 'openedAt'>, signal: AbortSignal): Promise<ScoConfigFormOutcome>
+
+/**
+ * Follow the open configuration forms: the list now and after each form opens or closes.
+ * @param signal - stream lifetime.
+ * @returns complete form lists in opening order.
+ */
+@Remote({ mode: 'stream' }) followForms(signal: AbortSignal): AsyncIterable<ScoConfigForm[]>
+
+/**
+ * Answer an open configuration form. A save request stores the confirmed values first; a failed save leaves the form open.
+ * @param callId - tool call that opened the form.
+ * @param answer - confirmed values with the optional configuration loaded and save name, or a cancellation.
+ * @returns after the form closes.
+ */
+@Remote async answerForm(callId: ToolCallId, answer: ScoConfigFormAnswer): Promise<void>
 ```
+
+Types: [ToolCallId](core.zh.md)
 
 Source: [`packages/experimental/sco-submit/src/index.ts`](../../packages/experimental/sco-submit/src/index.ts)
 

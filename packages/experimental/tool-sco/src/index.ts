@@ -5,6 +5,9 @@ import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-experimental-sco'
 import type { ScoCallOrigin } from '@deepseek-ai/dsh-experimental-sco'
 import type { ScoSource, ScoVolume, ScoWorkloadSpec } from '@deepseek-ai/dsh-experimental-sco-submit'
+import type {} from '@deepseek-ai/dsh-experimental-cluster-monitor'
+import type { ClusterMetricSource } from '@deepseek-ai/dsh-experimental-cluster-monitor'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { PreToolDecision, ToolRunContext } from '@deepseek-ai/dsh-tools'
 
@@ -30,6 +33,10 @@ const JOB_NAME = { type: 'string', required: true, description: 'Job name, for e
 const IMAGE_TYPE = { type: 'string', enum: ['OFFICIAL', 'PRIVATE', 'THIRD_PARTY'] } as const
 const ENV = { type: 'object', additionalProperties: true, description: 'Environment variables as string values.' } as const
 const DRY_RUN = { type: 'boolean', description: 'Validate and return the merged TrainingJob without submitting.' } as const
+const DESCRIPTION = {
+  type: 'string',
+  description: 'One sentence, in the user\'s language, on what the job does and how it differs from similar jobs, for example "Train the G1 tracking policy on LAFAN, 8 GPUs, lr 3e-4". Shown in the user\'s job lists.',
+} as const
 const QUEUE_ID = { type: 'string', description: 'Full queue resource id. Omit to use the configured default.' } as const
 /** Resource flags shared by direct creation and template submission. */
 const RESOURCES = {
@@ -119,9 +126,20 @@ function stringEnv(env: Record<string, unknown> | undefined): Record<string, str
 
 const json = (value: unknown) => [{ type: 'text' as const, text: JSON.stringify(value) }]
 
-/** The calling agent's Session, so job observers can group created jobs by conversation. */
-function originOf(exec: ToolRunContext): ScoCallOrigin {
-  return exec.agent === undefined ? {} : { sessionId: exec.agent.id }
+/** The calling agent's Session and the job's description, so job observers can group and label created jobs. */
+function originOf(exec: ToolRunContext, description?: string): ScoCallOrigin {
+  return {
+    ...exec.agent === undefined ? {} : { sessionId: exec.agent.id },
+    ...description === undefined ? {} : { description },
+  }
+}
+
+/** Read a metric source from model JSON; the monitor validates the kind and options. */
+function metricSourceOf(value: { kind: string; options?: JsonValue }): ClusterMetricSource {
+  const { options } = value
+  if (options === undefined) return { kind: value.kind }
+  if (typeof options !== 'object' || options === null || Array.isArray(options)) throw new Error('metrics.options must be an object')
+  return { kind: value.kind, options }
 }
 
 /**
@@ -209,6 +227,7 @@ export function apply(ctx: Context, config: Config): void {
     parameters: {
       name: { type: 'string', required: true, description: 'New job name: job- prefix, lowercase letters, digits, and hyphens, at most 32 characters.' },
       displayName: { type: 'string', description: 'Console display name.' },
+      description: DESCRIPTION,
       image: { type: 'string', required: true, description: 'Container image reference.' },
       imageType: IMAGE_TYPE,
       args: { type: 'string', required: true, description: 'Startup command, run with bash -c.' },
@@ -242,9 +261,9 @@ export function apply(ctx: Context, config: Config): void {
       render: (_args, value) => json(value),
     },
     async execute(args, exec) {
-      const { env, ...rest } = args
+      const { env, description, ...rest } = args
       const strings = stringEnv(env)
-      return ctx.sco.createJob({ ...rest, ...strings === undefined ? {} : { env: strings } }, exec.signal, originOf(exec))
+      return ctx.sco.createJob({ ...rest, ...strings === undefined ? {} : { env: strings } }, exec.signal, originOf(exec, description))
     },
     presentCall: args => ({ card: 'generic', title: `sco_job_create ${args.name}${args.dryRun === true ? ' (dry run)' : ''}`, rawInput: args }),
   }))
@@ -294,6 +313,10 @@ export function apply(ctx: Context, config: Config): void {
 
   ctx.inject(['scoSubmit'], (scope) => {
     registerSubmissionTools(scope)
+  })
+
+  ctx.inject(['clusterMonitor'], (scope) => {
+    registerWatchTool(scope)
   })
 
   if (config.confirmMutations !== false) {
@@ -389,6 +412,7 @@ function registerSubmissionTools(ctx: Context): void {
       env: ENV,
       ...RESOURCES,
       displayName: { type: 'string', description: 'Console display name.' },
+      description: DESCRIPTION,
       queueId: QUEUE_ID,
       workspace: WORKSPACE,
       dryRun: DRY_RUN,
@@ -416,9 +440,9 @@ function registerSubmissionTools(ctx: Context): void {
       render: (_args, value) => json(value),
     },
     async execute(args, exec) {
-      const { env, ...rest } = args
+      const { env, description, ...rest } = args
       const strings = stringEnv(env)
-      return ctx.scoSubmit.submit({ ...rest, ...strings === undefined ? {} : { env: strings } }, exec.signal, originOf(exec))
+      return ctx.scoSubmit.submit({ ...rest, ...strings === undefined ? {} : { env: strings } }, exec.signal, originOf(exec, description))
     },
     presentCall: args => ({ card: 'generic', title: `sco_job_submit ${args.name}${args.dryRun === true ? ' (dry run)' : ''}`, rawInput: args }),
   }))
@@ -464,5 +488,43 @@ function registerSubmissionTools(ctx: Context): void {
       }, exec.signal)
     },
     presentCall: args => ({ card: 'generic', title: `sco_config_form ${args.kind}`, rawInput: args }),
+  }))
+}
+
+/** Register the tool that watches a job and sets its description and metric source; needs cluster-monitor. */
+function registerWatchTool(ctx: Context): void {
+  ctx.tools.register(defineTool({
+    name: 'sco_job_watch',
+    description: 'Watch an SSP job on the user\'s cluster job pages, or change a watched job\'s description or where its training curves come from. Jobs created through sco_job_create and sco_job_submit are watched already. Set metrics when the code repository\'s skills, docs, or logs show how it reports metrics: kind logs parses the job log with options.parsers, a list of { kind: "experiment-logger" } (rlightning-humanoid tables and [step=N] lines), { kind: "json-lines", stepKey? }, { kind: "key-value", stepKey? } (step=N loss=0.1 lines), or { kind: "regex", pattern } whose named group step captures the step and whose other named groups capture metric values; kind wandb, when installed, reads a Weights & Biases run with options.run set to "entity/project/run-id" or the run URL, or omitted to find the run URL in the job log. A kind that is not installed fails with the installed kinds. A new source clears the stored curves.',
+    parameters: {
+      name: JOB_NAME,
+      workspace: WORKSPACE,
+      description: DESCRIPTION,
+      metrics: {
+        type: 'object',
+        additionalProperties: false,
+        description: 'Metric source; omit to keep the current one.',
+        properties: {
+          kind: { type: 'string', required: true, description: 'logs, or another installed source such as wandb.' },
+          options: { type: 'json', description: 'Source options object.' },
+        },
+      },
+    },
+    output: { schema: { type: 'json' }, render: (_args, value) => json(value) },
+    async execute(args, exec) {
+      const row = await ctx.clusterMonitor.watch({
+        name: args.name,
+        ...args.workspace === undefined ? {} : { workspace: args.workspace },
+        ...exec.agent === undefined ? {} : { sessionId: exec.agent.id },
+        ...args.description === undefined ? {} : { description: args.description },
+        ...args.metrics === undefined ? {} : { metrics: metricSourceOf(args.metrics) },
+      })
+      const { kind, options } = row.metrics
+      return {
+        name: row.name, phase: row.phase, description: row.description ?? null,
+        metrics: { kind, ...options === undefined ? {} : { options } }, metricsDefault: row.metricsDefault,
+      }
+    },
+    presentCall: args => ({ card: 'generic', title: `sco_job_watch ${args.name}`, rawInput: args }),
   }))
 }

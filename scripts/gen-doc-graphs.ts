@@ -201,8 +201,10 @@ const SERVICE_ROLES: ServiceRole[] = [
     key: 'clusterMonitor',
     pkg: 'experimental-cluster-monitor',
     title: 'Watched SSP job polling',
-    mode: 'core',
-    note: 'Polls watched jobs through the SSP gateway on Host timers and serves state, log-derived metrics, and log tails to the Web page; nothing reaches a model request.',
+    mode: 'seam',
+    implementations: ['experimental-cluster-monitor'],
+    consumers: ['experimental-tool-sco', 'experimental-cluster-metrics-wandb'],
+    note: 'Polls watched jobs through the SSP gateway on Host timers and serves state, curves from registered metric sources, and log tails to the Web page; polling never reaches a model request, and only sco_job_watch results do.',
   },
   {
     key: 'gitBranch',

@@ -87,6 +87,7 @@ Promotion requires a named product role, documented public behavior and limitati
 | [`sco-submit`](sco-submit/README.md) | SSP job composition from registered data, code, and output sources and configured templates | `ctx.scoSubmit` |
 | [`tool-sco`](tool-sco/README.md) | Model tools for SSP training jobs, asking before submission and stop | `ctx.tools` |
 | [`cluster-monitor`](cluster-monitor/README.md) | Host polling of watched SSP jobs: state, training curves, and logs | `ctx.clusterMonitor` |
+| [`cluster-metrics-wandb`](cluster-metrics-wandb/README.md) | Weights & Biases run history as a cluster job metric source | — |
 | [`client-ui-cluster-monitor`](client-ui-cluster-monitor/README.md) | The Cluster jobs page for watched SSP jobs | — |
 | [`git-branch`](git-branch/README.md) | The checked-out branch and branch switching for a Session's working directory | `ctx.gitBranch` |
 | [`client-ui-git-branch`](client-ui-git-branch/README.md) | The Git branch chip on the New Session screen | — |

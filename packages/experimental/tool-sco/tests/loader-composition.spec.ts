@@ -20,6 +20,7 @@ import ApprovalService from '@deepseek-ai/dsh-user-approval'
 import type { ApprovalOutcome, ApprovalRequest } from '@deepseek-ai/dsh-user-approval'
 import ScoGateway from '@deepseek-ai/dsh-experimental-sco'
 import ScoSubmit from '@deepseek-ai/dsh-experimental-sco-submit'
+import ClusterMonitor from '@deepseek-ai/dsh-experimental-cluster-monitor'
 import type { ScoConfigForm } from '@deepseek-ai/dsh-experimental-sco-submit/types'
 import Storage from '@deepseek-ai/dsh-storage'
 import * as StorageDomain from '@deepseek-ai/dsh-storage-domain'
@@ -40,7 +41,7 @@ afterEach(async () => {
   fake = undefined
 })
 
-async function boot(toolConfig: string[] = [], submit = false): Promise<{ ctx: Context; agent: Agent }> {
+async function boot(toolConfig: string[] = [], submit = false, monitor = false): Promise<{ ctx: Context; agent: Agent }> {
   root = await realpath(await mkdtemp(join(tmpdir(), 'dsh-tool-sco-loader-')))
   fake = await fakeSco()
   const modules = new Map<string, unknown>([
@@ -53,14 +54,15 @@ async function boot(toolConfig: string[] = [], submit = false): Promise<{ ctx: C
     ['@deepseek-ai/dsh-user-approval', ApprovalService],
     ['@deepseek-ai/dsh-subprocess-local', LocalSubprocessRuntime],
     ['@deepseek-ai/dsh-experimental-sco', ScoGateway],
-    ...submit
+    ...submit || monitor
       ? [
         ['@deepseek-ai/dsh-storage', Storage],
         ['@deepseek-ai/dsh-storage-json', StorageJson],
         ['@deepseek-ai/dsh-storage-domain', StorageDomain],
-        ['@deepseek-ai/dsh-experimental-sco-submit', ScoSubmit],
       ] as const
       : [],
+    ...submit ? [['@deepseek-ai/dsh-experimental-sco-submit', ScoSubmit]] as const : [],
+    ...monitor ? [['@deepseek-ai/dsh-experimental-cluster-monitor', ClusterMonitor]] as const : [],
     ['@deepseek-ai/dsh-experimental-tool-sco', ToolSco],
     ['@deepseek-ai/dsh-agent-loop', AgentLoop],
   ])
@@ -71,6 +73,7 @@ async function boot(toolConfig: string[] = [], submit = false): Promise<{ ctx: C
     ...name === '@deepseek-ai/dsh-agent-loop' ? ['  config:', '    agents: []'] : [],
     ...name === '@deepseek-ai/dsh-storage-json' ? ['  config:', `    root: '${join(root!, 'store')}'`] : [],
     ...name === '@deepseek-ai/dsh-storage-domain' ? ['  config:', '    backend: json'] : [],
+    ...name === '@deepseek-ai/dsh-experimental-cluster-monitor' ? ['  config:', '    runningPollMs: 600000', '    pendingPollMs: 600000'] : [],
     ...name === '@deepseek-ai/dsh-experimental-sco-submit'
       ? ['  config:', '    templates:', '      wbt-train:', '        image: registry/rlh:wbt', '        code: rlh', '        output: outputs', '        command: python train.py']
       : [],
@@ -127,8 +130,12 @@ describe('SSP job tools through real Loader composition', () => {
     expect(rejected.isError).toBe(true)
     expect(asked.map(request => [request.toolName, request.reason])).toEqual([['sco_job_create', 'submit SSP training job job-wbt']])
     outcome = 'allowed-once'
-    const created = await call(ctx, agent, 'sco_job_create', spec)
+    const createdEvents: unknown[] = []
+    ctx.on('sco/job-created', (event) => { createdEvents.push(event) })
+    const created = await call(ctx, agent, 'sco_job_create', { ...spec, description: 'Train the G1 policy' })
     expect(created.value).toEqual({ kind: 'created', name: 'job-wbt', output: 'created job-wbt' })
+    expect(createdEvents).toEqual([{ name: 'job-wbt', workspace: 'team-a', sessionId: 'tool-sco-loader', description: 'Train the G1 policy' }])
+    expect((await fake!.calls()).flat()).not.toContain('Train the G1 policy')
     const stopped = await call(ctx, agent, 'sco_job_stop', { names: ['job-wbt'] })
     expect(stopped.value).toEqual({ names: ['job-wbt'], output: 'stopped' })
     expect(asked.map(request => request.reason)).toEqual([
@@ -258,8 +265,8 @@ describe('SSP job tools through real Loader composition', () => {
 
     const createdEvents: unknown[] = []
     ctx.on('sco/job-created', (event) => { createdEvents.push(event) })
-    await call(ctx, agent, 'sco_job_submit', { name: 'job-wbt2', template: 'wbt-train', machineType: 'h1ls.rp.k60a', gpuCount: 8 })
-    expect(createdEvents).toEqual([{ name: 'job-wbt2', workspace: 'team-a', sessionId: 'tool-sco-loader' }])
+    await call(ctx, agent, 'sco_job_submit', { name: 'job-wbt2', template: 'wbt-train', machineType: 'h1ls.rp.k60a', gpuCount: 8, description: 'Eight GPUs' })
+    expect(createdEvents).toEqual([{ name: 'job-wbt2', workspace: 'team-a', sessionId: 'tool-sco-loader', description: 'Eight GPUs' }])
 
     const entry = [...ctx.loader.entries()].find(candidate => candidate.options.name === 'cordis:@deepseek-ai/dsh-experimental-sco-submit')
     await entry!.fiber!.dispose()
@@ -323,5 +330,32 @@ describe('configuration forms through real Loader composition', () => {
     lifetime.abort(new Error('turn stopped'))
     expect((await running).isError).toBe(true)
     await expect(ctx.scoSubmit.answerForm(callId, { kind: 'cancelled' })).rejects.toThrow('no configuration form is open')
+  })
+})
+
+describe('job watching through real Loader composition', () => {
+  it('watches a job with a description and metric source, rejects invalid sources, and unregisters with the monitor', async () => {
+    const { ctx, agent } = await boot([], false, true)
+    const watched = await call(ctx, agent, 'sco_job_watch', {
+      name: 'job-wbt', description: 'Reproduce the G1 baseline',
+      metrics: { kind: 'logs', options: { parsers: [{ kind: 'regex', pattern: String.raw`it (?<step>\d+) loss (?<loss>[\d.]+)` }] } },
+    })
+    expect(watched.value).toEqual({
+      name: 'job-wbt', phase: 'unknown', description: 'Reproduce the G1 baseline', metricsDefault: false,
+      metrics: { kind: 'logs', options: { parsers: [{ kind: 'regex', pattern: String.raw`it (?<step>\d+) loss (?<loss>[\d.]+)` }] } },
+    })
+    expect(ctx.clusterMonitor.list()[0]).toMatchObject({ sessionId: 'tool-sco-loader', origin: 'manual' })
+    const plain = await call(ctx, agent, 'sco_job_watch', { name: 'job-wbt', workspace: 'team-b', metrics: { kind: 'logs' } })
+    expect(plain.value).toMatchObject({ description: null, metrics: { kind: 'logs' }, metricsDefault: false })
+    expect(text(await call(ctx, agent, 'sco_job_watch', { name: 'job-wbt', metrics: { kind: 'wandb' } }))).toContain('no metric source "wandb" is registered; registered: logs')
+    expect(text(await call(ctx, agent, 'sco_job_watch', { name: 'job-wbt', metrics: { kind: 'logs', options: [1] } }))).toContain('metrics.options must be an object')
+    expect(ctx.tools.get('sco_job_watch')!.presentCall!({ name: 'job-wbt' })).toMatchObject({ title: 'sco_job_watch job-wbt' })
+    const outside = await ctx.tools.execute({ name: 'sco_job_watch', callId: ToolCallId('watch-outside'), arguments: { name: 'job-out' }, signal: new AbortController().signal })
+    expect(outside.value).toMatchObject({ name: 'job-out', metricsDefault: true })
+    expect(ctx.clusterMonitor.list().find(row => row.name === 'job-out')?.sessionId).toBeUndefined()
+
+    const entry = [...ctx.loader.entries()].find(candidate => candidate.options.name === 'cordis:@deepseek-ai/dsh-experimental-cluster-monitor')
+    await entry!.fiber!.dispose()
+    expect(ctx.tools.get('sco_job_watch')).toBeUndefined()
   })
 })

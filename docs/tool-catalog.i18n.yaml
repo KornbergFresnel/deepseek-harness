@@ -9,8 +9,8 @@
   en: 6cc2cd9ced70bb09
   zh: 1c0e6cb4ba2ed637
 /tool-schema-catalog/tool-package-map:
-  en: b6a499c853c54f6f
-  zh: b188a4bafe75041c
+  en: a1c77702432cdc8e
+  zh: 10aa204f5e475792
 /tool-schema-catalog/deepseek-ai-dsh-plugin-manager:
   en: e0143916bb634762
   zh: e0143916bb634762
@@ -332,6 +332,9 @@
 /tool-schema-catalog/deepseek-ai-dsh-experimental-tool-sco/sco-job-submit:
   en: b38dfff3dde7d74f
   zh: a87b730df34449a9
+/tool-schema-catalog/deepseek-ai-dsh-experimental-tool-sco/sco-job-watch:
+  en: 0e4d9da8d8c4154d
+  zh: e776fa7ba0a1c8a4
 /tool-schema-catalog/deepseek-ai-dsh-experimental-tool-sco/sco-job-workers:
   en: b7749112b6034d7d
   zh: d48ed6395dd6945e
@@ -354,8 +357,8 @@
   en: a93f62da5207aa58
   zh: 28664511f28967b8
 /tool-schema-catalog/deepseek-ai-dsh-experimental-tool-sco/sco-volumes-list:
-  en: 5b7dc61062d3bafe
-  zh: 21d9f0c76efeb9ab
+  en: e0fafe15e9300a1f
+  zh: a5128e2a91a6da19
 /tool-schema-catalog/deepseek-ai-dsh-tool-workflow:
   en: bb38a9d29f46563c
   zh: bb38a9d29f46563c

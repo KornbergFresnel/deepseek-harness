@@ -5,12 +5,12 @@ import type { HostObservable, InjectFace, PropsLocale, PropsRuntime } from '@dee
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type { ClusterWatchId, ClusterWatchRow } from '@deepseek-ai/dsh-experimental-cluster-monitor/types'
-import { JobDetail, PhaseTag, type ClusterPageInjected } from './ClusterPage.tsx'
+import { JobDetail, PhaseTag, RowDescription, type ClusterPageInjected } from './ClusterPage.tsx'
 import type { Mirror } from './source.ts'
 import css from './SessionJobs.module.css'
 
 /** Host mirror and job actions shared by the Session jobs tab and its guide card. */
-export interface SessionJobsInjected extends Pick<ClusterPageInjected, 'openJob' | 'refresh' | 'unwatch'> {
+export interface SessionJobsInjected extends Pick<ClusterPageInjected, 'openJob' | 'refresh' | 'unwatch' | 'configure' | 'metricSources'> {
   readonly hooks: { readonly watchList: HostObservable<Mirror<ClusterWatchRow[]>> }
 }
 
@@ -98,6 +98,7 @@ export function SessionJobsTab(props: SessionJobsTabProps) {
                   <span className={css.name}>{row.name}</span>
                   <PhaseTag phase={row.phase} t={t} />
                 </span>
+                <RowDescription row={row} />
                 <RowMeta row={row} t={t} />
               </button>
             </li>
@@ -143,6 +144,7 @@ export function SessionJobsGuide({ sessionId, kind, title, useTabInfo, useWatchL
                   <span className={css.name}>{row.name}</span>
                   <PhaseTag phase={row.phase} t={t} />
                 </span>
+                <RowDescription row={row} />
                 <RowMeta row={row} t={t} />
               </button>
             </li>

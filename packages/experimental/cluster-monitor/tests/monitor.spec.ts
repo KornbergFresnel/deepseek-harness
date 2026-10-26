@@ -12,7 +12,7 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { remoteErrorOf } from '@deepseek-ai/dsh-typert-protocol'
 import ClusterMonitor from '../src/index.ts'
-import type { ClusterJobDetail, ClusterWatchId, Config } from '../src/index.ts'
+import type { ClusterJobDetail, ClusterMetricProvider, ClusterWatchId, Config } from '../src/index.ts'
 import { fakeSco, type FakeSco } from './fake-sco.ts'
 
 const contexts: Context[] = []
@@ -239,5 +239,145 @@ describe('cluster monitor', () => {
     await ctx.fiber.dispose()
     contexts.splice(contexts.indexOf(ctx), 1)
     await expect(Promise.all(pending)).resolves.toEqual([undefined, undefined])
+  })
+})
+
+describe('job descriptions and metric sources', () => {
+  /** A registered source whose records and failures the test sets. */
+  function scripted() {
+    const state: { records: { step: number; values: Record<string, number> }[]; failure?: string } = { records: [] }
+    const reads: { name: string; logs: string; options: object }[] = []
+    const provider: ClusterMetricProvider = {
+      validate(options) {
+        if ('bad' in options) throw new Error('bad is not an option')
+        return options
+      },
+      read(input) {
+        reads.push({ name: input.name, logs: input.logs, options: input.options })
+        if (state.failure !== undefined) return Promise.reject(new Error(state.failure))
+        return Promise.resolve(state.records)
+      },
+    }
+    return { state, reads, provider }
+  }
+
+  it('stores descriptions from creation, watch, and configure, and reads the SSP display name', async () => {
+    const { ctx, fake } = await setup()
+    await fake.job('job-a', { state: 'Pending', display_name: 'G1 sweep' })
+    ctx.emit('sco/job-created', { name: 'job-a', description: '  Train the G1 tracking policy ' })
+    const [created] = await until(() => ctx.clusterMonitor.list(), rows => rows[0]?.displayName !== undefined)
+    expect(created).toMatchObject({ description: 'Train the G1 tracking policy', displayName: 'G1 sweep', metrics: { kind: 'logs' }, metricsDefault: true })
+    const renamed = await ctx.clusterMonitor.watch({ name: 'job-a', description: 'Second try' })
+    expect(renamed.description).toBe('Second try')
+    expect((await ctx.clusterMonitor.watch({ name: 'job-a' })).description).toBe('Second try')
+    const cleared = await ctx.clusterMonitor.configure(created!.id, { description: '  ' })
+    expect(cleared.description).toBeUndefined()
+    const failure = await ctx.clusterMonitor.configure(created!.id, { description: 'x'.repeat(501) }).catch((error: unknown) => remoteErrorOf(error))
+    expect(failure).toMatchObject({ code: 'cluster/invalid-job', details: { reason: 'description' } })
+    expect(await ctx.clusterMonitor.watch({ name: 'job-b', description: 'x'.repeat(501) }).catch((error: unknown) => remoteErrorOf(error)))
+      .toMatchObject({ code: 'cluster/invalid-job' })
+    expect(ctx.clusterMonitor.list()).toHaveLength(1)
+  })
+
+  it('validates metric sources, clears curves on a new source, polls again, and resets to the default', async () => {
+    const { ctx, fake } = await setup()
+    const custom = scripted()
+    const unregister = ctx.clusterMonitor.registerMetricSource('custom', custom.provider)
+    expect(() => ctx.clusterMonitor.registerMetricSource('custom', custom.provider)).toThrow('already registered')
+    expect(() => ctx.clusterMonitor.registerMetricSource('logs', custom.provider)).toThrow('already registered')
+    expect(ctx.clusterMonitor.metricSources()).toEqual(['logs', 'custom'])
+    await fake.job('job-m', { state: 'Running' })
+    await fake.logs('job-m', '[step=5]  loss=0.5\nstep=6 loss=0.4\n{"step": 7, "loss": 0.3}\n')
+    const row = await ctx.clusterMonitor.watch({ name: 'job-m' })
+    const parsed = await until(() => ctx.clusterMonitor.detail(row.id), job => job.step === 7)
+    expect(parsed.series[0]!.points.map(point => point.step)).toEqual([5, 6, 7])
+
+    const invalid = (promise: Promise<unknown>) => promise.then(() => undefined, (error: unknown) => remoteErrorOf(error))
+    expect(await invalid(ctx.clusterMonitor.configure(row.id, { metrics: { kind: 'tensorboard' } })))
+      .toMatchObject({ code: 'cluster/invalid-metrics', message: 'no metric source "tensorboard" is registered; registered: logs, custom' })
+    expect(await invalid(ctx.clusterMonitor.configure(row.id, { metrics: { kind: 'custom', options: { bad: true } } })))
+      .toMatchObject({ code: 'cluster/invalid-metrics', details: { kind: 'custom', reason: 'bad is not an option' } })
+    expect(await invalid(ctx.clusterMonitor.watch({ name: 'job-new', metrics: { kind: 'tensorboard' } }))).toMatchObject({ code: 'cluster/invalid-metrics' })
+
+    custom.state.records = [{ step: 2, values: { reward: 1 } }, { step: 1, values: { reward: 0.5 } }]
+    const switched = await ctx.clusterMonitor.configure(row.id, { metrics: { kind: 'custom', options: { run: 'a' } } })
+    expect(switched).toMatchObject({ metrics: { kind: 'custom', options: { run: 'a' } }, metricsDefault: false })
+    expect(switched.step).toBeUndefined()
+    const fromCustom = await until(() => ctx.clusterMonitor.detail(row.id), job => job.step === 2)
+    expect(fromCustom.series.map(series => [series.name, series.points.map(point => point.step)])).toEqual([['reward', [1, 2]]])
+    expect(custom.reads.at(-1)).toMatchObject({ name: 'job-m', options: { run: 'a' }, logs: expect.stringContaining('[step=5]') as string })
+    const reads = custom.reads.length
+    await ctx.clusterMonitor.configure(row.id, { metrics: { kind: 'custom', options: { run: 'a' } } })
+    expect(custom.reads).toHaveLength(reads)
+
+    custom.state.failure = 'run not found'
+    await ctx.clusterMonitor.refresh(row.id)
+    expect(ctx.clusterMonitor.detail(row.id)).toMatchObject({ metricsError: 'run not found', step: 2 })
+    delete custom.state.failure
+    await ctx.clusterMonitor.refresh(row.id)
+    expect(ctx.clusterMonitor.detail(row.id).metricsError).toBeUndefined()
+
+    unregister()
+    unregister()
+    expect(ctx.clusterMonitor.metricSources()).toEqual(['logs'])
+    await ctx.clusterMonitor.refresh(row.id)
+    expect(ctx.clusterMonitor.detail(row.id).metricsError).toBe('no metric source "custom" is registered')
+    const reset = await ctx.clusterMonitor.configure(row.id, { metrics: null })
+    expect(reset).toMatchObject({ metrics: { kind: 'logs' }, metricsDefault: true })
+    await until(() => ctx.clusterMonitor.detail(row.id), job => job.step === 7)
+    const parsers = await ctx.clusterMonitor.configure(row.id, { metrics: { kind: 'logs', options: { parsers: [{ kind: 'json-lines' }] } } })
+    expect(parsers.metricsDefault).toBe(false)
+    const jsonOnly = await until(() => ctx.clusterMonitor.detail(row.id), job => job.step === 7 && job.series[0]!.points.length === 1)
+    expect(jsonOnly.series[0]!.points).toEqual([{ step: 7, value: 0.3 }])
+    expect(await ctx.clusterMonitor.watch({ name: 'job-m', metrics: { kind: 'logs' } })).toMatchObject({ metrics: { kind: 'logs' }, metricsDefault: false })
+  })
+
+  it('uses the configured default source and reports a default no plugin registers', async () => {
+    const { ctx, fake } = await setup({ defaultMetricSource: 'wandb', logParsers: [{ kind: 'regex', pattern: String.raw`it (?<step>\d+) loss (?<loss>[\d.]+)` }] })
+    await fake.job('job-w', { state: 'Running' })
+    await fake.logs('job-w', 'it 3 loss 0.5\n')
+    const row = await ctx.clusterMonitor.watch({ name: 'job-w' })
+    expect(row).toMatchObject({ metrics: { kind: 'wandb' }, metricsDefault: true })
+    const failed = await until(() => ctx.clusterMonitor.detail(row.id), job => job.metricsError !== undefined)
+    expect(failed.metricsError).toBe('no metric source "wandb" is registered')
+    await ctx.clusterMonitor.configure(row.id, { metrics: { kind: 'logs' } })
+    const parsed = await until(() => ctx.clusterMonitor.detail(row.id), job => job.step === 3)
+    expect(parsed.metricsError).toBeUndefined()
+    await expect(setup({ logParsers: [{ kind: 'regex', pattern: 'loss' }] })).rejects.toThrow('named group "step"')
+  })
+
+  it('joins a watch request that arrives while the same job is being created', async () => {
+    const { ctx, fake } = await setup()
+    await fake.job('job-j', { state: 'Pending' })
+    const session = brandString<SessionId>('session-j')
+    ctx.emit('sco/job-created', { name: 'job-j', sessionId: session })
+    const joined = await ctx.clusterMonitor.watch({ name: 'job-j', description: 'joined' })
+    expect(ctx.clusterMonitor.list()).toHaveLength(1)
+    expect(joined).toMatchObject({ origin: 'created', sessionId: 'session-j', description: 'joined' })
+    const polled = await until(() => ctx.clusterMonitor.detail(joined.id), job => job.checkedAt !== undefined)
+    expect(polled).toMatchObject({ sessionId: 'session-j', description: 'joined', phase: 'pending' })
+  })
+
+  it('keeps a change made while a poll runs', async () => {
+    const { ctx, fake } = await setup()
+    const slow = scripted()
+    let release: (() => void) | undefined
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    ctx.clusterMonitor.registerMetricSource('slow', {
+      validate: options => options,
+      read: async (input, signal) => { await gate; return slow.provider.read(input, signal) },
+    })
+    await fake.job('job-p', { state: 'Running' })
+    await fake.logs('job-p', '')
+    const row = await ctx.clusterMonitor.watch({ name: 'job-p', metrics: { kind: 'slow' } })
+    await new Promise(resolve => setTimeout(resolve, 300))
+    await ctx.clusterMonitor.configure(row.id, { description: 'changed mid-poll' })
+    slow.state.records = [{ step: 4, values: { loss: 1 } }]
+    const switched = ctx.clusterMonitor.configure(row.id, { metrics: { kind: 'logs' } })
+    release!()
+    await switched
+    const settled = await until(() => ctx.clusterMonitor.detail(row.id), job => job.checkedAt !== undefined)
+    expect(settled).toMatchObject({ description: 'changed mid-poll', metrics: { kind: 'logs' } })
+    expect(settled.series.every(series => series.name !== 'loss' || series.points.every(point => point.step !== 4))).toBe(true)
   })
 })

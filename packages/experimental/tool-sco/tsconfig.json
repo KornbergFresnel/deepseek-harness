@@ -25,6 +25,12 @@
     },
     {
       "path": "../sco-submit"
+    },
+    {
+      "path": "../cluster-monitor"
+    },
+    {
+      "path": "../../util/values"
     }
   ]
 }

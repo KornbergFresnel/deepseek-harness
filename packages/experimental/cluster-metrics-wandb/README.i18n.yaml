@@ -1,0 +1,37 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/cluster-metrics-wandb/README.md
+/:
+  en: 789e8aa89aeb2aaa
+  zh: a5d29f8f63a3ea86
+/deepseek-ai-dsh-experimental-cluster-metrics-wandb:
+  en: fcd06a212b4ee837
+  zh: b88e30d7a134b83f
+/deepseek-ai-dsh-experimental-cluster-metrics-wandb/summary:
+  en: 9a94fa83f710a8a7
+  zh: d84681bfd5d09ef5
+/deepseek-ai-dsh-experimental-cluster-metrics-wandb/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 2f8a621b991260a1
+/deepseek-ai-dsh-experimental-cluster-metrics-wandb/use-this-package:
+  en: bcfebeae08eaeb94
+  zh: 976be4d9d8e1a99f
+/deepseek-ai-dsh-experimental-cluster-metrics-wandb/understand-the-implementation:
+  en: 6562c62d7abb3cef
+  zh: 785dcfe36f3e5c47
+/deepseek-ai-dsh-experimental-cluster-metrics-wandb/further-exploration:
+  en: 15b055527d2917bc
+  zh: 8c472aa4346c91ac
+/deepseek-ai-dsh-experimental-cluster-metrics-wandb/model-experience:
+  en: c0a6ebbf844ae5a1
+  zh: 9e56001de43e0021
+/deepseek-ai-dsh-experimental-cluster-metrics-wandb/model-experience/kv-cache-effect:
+  en: 580d7d373b8d47a8
+  zh: b52e292369fdcbeb
+/deepseek-ai-dsh-experimental-cluster-metrics-wandb/known-limitations-and-deferred-work:
+  en: b781abe801f6ee8a
+  zh: 5930df4c5f570e30
+/deepseek-ai-dsh-experimental-cluster-metrics-wandb/known-limitations-and-deferred-work/dev-note:
+  en: 25ff38f8f812435d
+  zh: 7cb8556c320fa2a2

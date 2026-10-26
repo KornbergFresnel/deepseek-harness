@@ -8,11 +8,12 @@ import type {
   ClusterJobDetail, ClusterJobPhase, ClusterMetricSeries, ClusterWatchId, ClusterWatchRequest, ClusterWatchRow,
 } from '@deepseek-ai/dsh-experimental-cluster-monitor/types'
 import { formatValue, geometry, VIEW_HEIGHT, VIEW_WIDTH } from './chart.ts'
+import { DescriptionField, MetricSourceField, type JobSettingsActions } from './JobSettings.tsx'
 import type { Mirror, MirrorHandle } from './source.ts'
 import css from './ClusterPage.module.css'
 
 /** Host mirrors and actions the page receives from its registration. */
-export interface ClusterPageInjected {
+export interface ClusterPageInjected extends JobSettingsActions {
   readonly hooks: { readonly watchList: HostObservable<Mirror<ClusterWatchRow[]>> }
   /** Open a detail mirror for one job; the page disposes it when the selection changes. */
   readonly openJob: (watchId: ClusterWatchId) => MirrorHandle<ClusterJobDetail>
@@ -79,6 +80,16 @@ export function MetricChart({ series, t }: { series: ClusterMetricSeries; t: Tra
   )
 }
 
+/**
+ * Render a row's description, or its console display name, on one truncated line.
+ * @param props - the row.
+ * @returns the line, or nothing when the job has neither.
+ */
+export function RowDescription({ row }: { row: ClusterWatchRow }) {
+  const text = row.description ?? row.displayName
+  return text === undefined ? null : <span className={css.rowDescription} title={text}>{text}</span>
+}
+
 function useMirror<T>(handle: MirrorHandle<T> | undefined): Mirror<T> | undefined {
   return useSyncExternalStore(
     listener => handle?.store.subscribe(listener) ?? (() => {}),
@@ -87,7 +98,7 @@ function useMirror<T>(handle: MirrorHandle<T> | undefined): Mirror<T> | undefine
 }
 
 /** Actions and copy the job detail needs; the Cluster jobs page and the Session jobs tab both supply them. */
-export type JobDetailActions = Pick<ClusterPageInjected, 'openJob' | 'refresh' | 'unwatch'> & { readonly t: Translate }
+export type JobDetailActions = Pick<ClusterPageInjected, 'openJob' | 'refresh' | 'unwatch' | 'configure' | 'metricSources'> & { readonly t: Translate }
 
 /**
  * Render one watched job's state, curves, logs, and job object with refresh and stop-watching actions.
@@ -145,6 +156,7 @@ export function JobDetail({ props, watchId, onRemoved }: { props: JobDetailActio
           {confirming ? t('detail.unwatchConfirm') : t('detail.unwatch')}
         </Button>
       </header>
+      <DescriptionField job={job} configure={props.configure} t={t} />
       {failure !== null && <p className={css.notice} role="alert">{t('action.failed', { message: failure })}</p>}
       {job.error !== undefined && <p className={css.notice}>{t('detail.error', { message: job.error })}</p>}
       <dl className={css.facts}>
@@ -153,6 +165,7 @@ export function JobDetail({ props, watchId, onRemoved }: { props: JobDetailActio
         ))}
       </dl>
       <h3>{t('metrics.title')}</h3>
+      <MetricSourceField job={job} actions={props} t={t} />
       {job.series.length === 0
         ? <p className={css.muted}>{t('metrics.empty')}</p>
         : <div className={css.charts}>{job.series.map(series => <MetricChart key={series.name} series={series} t={t} />)}</div>}
@@ -183,6 +196,7 @@ export function ClusterPage(props: ClusterPageProps) {
   const [selected, setSelected] = useState<ClusterWatchId | null>(null)
   const [name, setName] = useState('')
   const [workspace, setWorkspace] = useState('')
+  const [description, setDescription] = useState('')
   const [adding, setAdding] = useState(false)
   const [failure, setFailure] = useState<string | null>(null)
   const current = rows?.find(row => row.id === selected) ?? rows?.[0]
@@ -191,10 +205,14 @@ export function ClusterPage(props: ClusterPageProps) {
     event.preventDefault()
     if (name.trim() === '') return
     setAdding(true)
-    const message = await watch({ name: name.trim(), ...workspace.trim() === '' ? {} : { workspace: workspace.trim() } })
+    const message = await watch({
+      name: name.trim(),
+      ...workspace.trim() === '' ? {} : { workspace: workspace.trim() },
+      ...description.trim() === '' ? {} : { description: description.trim() },
+    })
     setAdding(false)
     setFailure(message)
-    if (message === null) setName('')
+    if (message === null) { setName(''); setDescription('') }
   }
 
   return (
@@ -208,6 +226,8 @@ export function ClusterPage(props: ClusterPageProps) {
           <Input value={name} placeholder={t('watch.name')} aria-label={t('watch.name')} onChange={(event) => { setName(event.target.value) }} />
           <Input value={workspace} placeholder={t('watch.workspace')} aria-label={t('watch.workspace')}
             onChange={(event) => { setWorkspace(event.target.value) }} />
+          <Input value={description} placeholder={t('watch.description')} aria-label={t('watch.description')}
+            onChange={(event) => { setDescription(event.target.value) }} />
           <Button type="submit" variant="primary" size="sm" disabled={adding || name.trim() === ''}>
             {adding ? t('watch.pending') : t('watch.submit')}
           </Button>
@@ -228,6 +248,7 @@ export function ClusterPage(props: ClusterPageProps) {
                         <span className={css.rowName}>{row.name}</span>
                         <PhaseTag phase={row.phase} t={t} />
                       </span>
+                      <RowDescription row={row} />
                       <span className={css.rowMeta}>
                         {row.workspace ?? ''}
                         {row.step === undefined ? '' : ` · ${t('list.step', { step: row.step })}`}

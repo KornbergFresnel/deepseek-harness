@@ -10,7 +10,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-tool/client'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { IconChecklistOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ToolCallId } from '@deepseek-ai/dsh-llm/brand'
-import type { ClusterWatchId, ClusterWatchRequest } from '@deepseek-ai/dsh-experimental-cluster-monitor/types'
+import type { ClusterWatchChanges, ClusterWatchId, ClusterWatchRequest } from '@deepseek-ai/dsh-experimental-cluster-monitor/types'
 import type {} from '@deepseek-ai/dsh-experimental-cluster-monitor/remote'
 import type { ScoDefaults } from '@deepseek-ai/dsh-experimental-sco/types'
 import type { ScoConfigFormAnswer, ScoConfigSaveRequest, ScoSourceSaveRequest } from '@deepseek-ai/dsh-experimental-sco-submit/types'
@@ -77,6 +77,12 @@ function registerUi(ctx: Context): void {
     watch: async (request: ClusterWatchRequest) => outcome(await ctx.remote.cluster.watch(request)),
     unwatch: async (watchId: ClusterWatchId) => outcome(await ctx.remote.cluster.unwatch(watchId)),
     refresh: async (watchId: ClusterWatchId) => outcome(await ctx.remote.cluster.refresh(watchId)),
+    configure: async (watchId: ClusterWatchId, changes: ClusterWatchChanges) =>
+      outcome(await ctx.remote.cluster.configure(watchId, changes)),
+    metricSources: async () => {
+      const result = await ctx.remote.cluster.metricSources()
+      return result.ok ? { kinds: result.value } : { error: result.error.message }
+    },
   }
   ctx.slots.inject('main', () => ctx.slots.register({
     name: 'main', key: PANEL_ID, locale: NS, inject: () => injected,
@@ -86,6 +92,7 @@ function registerUi(ctx: Context): void {
   }, ClusterIcon))
   const session: SessionJobsInjected = {
     hooks: { watchList: list.store }, openJob: injected.openJob, refresh: injected.refresh, unwatch: injected.unwatch,
+    configure: injected.configure, metricSources: injected.metricSources,
   }
   ctx.inject(['sidebarRightTabs'], (ctx) => {
     ctx.effect(() => ctx.sidebarRightTabs.register({

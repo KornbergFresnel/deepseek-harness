@@ -41,9 +41,11 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
-    "@deepseek-ai/dsh-tools": "workspace:*",
+    "@deepseek-ai/dsh-experimental-cluster-monitor": "workspace:*",
     "@deepseek-ai/dsh-experimental-sco": "workspace:*",
-    "@deepseek-ai/dsh-experimental-sco-submit": "workspace:*"
+    "@deepseek-ai/dsh-experimental-sco-submit": "workspace:*",
+    "@deepseek-ai/dsh-tools": "workspace:*",
+    "@deepseek-ai/dsh-util-values": "workspace:*"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
@@ -51,18 +53,19 @@
     "@deepseek-ai/cordis-plugin-loader": "workspace:~",
     "@deepseek-ai/dsh-agent": "workspace:*",
     "@deepseek-ai/dsh-agent-loop": "workspace:*",
+    "@deepseek-ai/dsh-experimental-cluster-monitor": "workspace:*",
+    "@deepseek-ai/dsh-experimental-sco": "workspace:*",
+    "@deepseek-ai/dsh-experimental-sco-submit": "workspace:*",
     "@deepseek-ai/dsh-llm": "workspace:*",
     "@deepseek-ai/dsh-session": "workspace:*",
     "@deepseek-ai/dsh-session-projection": "workspace:*",
+    "@deepseek-ai/dsh-storage": "workspace:*",
+    "@deepseek-ai/dsh-storage-domain": "workspace:*",
+    "@deepseek-ai/dsh-storage-json": "workspace:*",
     "@deepseek-ai/dsh-subprocess-local": "workspace:*",
     "@deepseek-ai/dsh-system-prompt": "workspace:*",
     "@deepseek-ai/dsh-tools": "workspace:*",
     "@deepseek-ai/dsh-user-approval": "workspace:*",
-    "@deepseek-ai/dsh-util-values": "workspace:*",
-    "@deepseek-ai/dsh-experimental-sco": "workspace:*",
-    "@deepseek-ai/dsh-experimental-sco-submit": "workspace:*",
-    "@deepseek-ai/dsh-storage": "workspace:*",
-    "@deepseek-ai/dsh-storage-domain": "workspace:*",
-    "@deepseek-ai/dsh-storage-json": "workspace:*"
+    "@deepseek-ai/dsh-util-values": "workspace:*"
   }
 }
