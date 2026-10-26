@@ -27,7 +27,7 @@ function row(phase: Phase, forms: ScoConfigForm[] | null = []) {
   const saveConfig = vi.fn(async () => null as string | null)
   const props = {
     callId, toolName: 'sco_config_form', useForms: bindSnapshotSelector(formStore), useOverview: bindSnapshotSelector(overviewStore),
-    answer, saveConfig, t, ...phase,
+    answer, saveConfig, storage: { saveSource: vi.fn(), loadVolumes: vi.fn() }, t, ...phase,
   } as FormToolRowProps
   return { ...render(<FormToolRow {...props} />), formStore, answer, saveConfig }
 }

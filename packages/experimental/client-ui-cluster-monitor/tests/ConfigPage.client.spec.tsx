@@ -19,12 +19,15 @@ const t = makeTranslate(zh)
 const code: ScoSource = { kind: 'code', volume: { type: 'afs', id: 'vol-a' }, root: 'code/rlh', mountPath: '/workspace/code', defaultRef: 'main', setup: 'pip install -e .' }
 const data: ScoSource = { kind: 'data', volume: { type: 'aoss', bucket: 'b', endpoint: 'e.example' }, mountPath: '/data', description: 'motion clips' }
 const output: ScoSource = { kind: 'output', volume: { type: 'afs', id: 'vol-b' }, root: 'runs' }
+const storage: ScoSource = { kind: 'storage', volume: { type: 'afs', id: 'vol-h' }, mountPath: '/personal', reposDir: 'repos', packagesDir: 'pkgs' }
 
 const overview: ScoConfigOverview = {
   profile: 'team', workspace: 'ws', configured: { workspace: 'ws' }, saved: {}, outputMountPath: '/workspace/output',
   sources: [{ name: 'rlh', source: code }, { name: 'clips', source: data }, { name: 'runs', source: output },
     { name: 'lib', source: { kind: 'code', volume: { type: 'afs', id: 'vol-a' }, root: 'lib', mountPath: '/lib', defaultRef: 'v1' } },
     { name: 'motion', source: { kind: 'data', volume: { type: 'afs', id: 'vol-a' }, path: 'motion/v1', mountPath: '/motion' } },
+    { name: 'home', source: { ...storage, path: 'users/e' } },
+    { name: 'scratch', source: storage },
   ],
   templates: [
     { name: 'wbt', template: { description: 'tracking', image: 'img:1', code: 'rlh', ref: 'dev', data: ['clips'], output: 'runs', command: 'train', podCount: 2, gpuCount: 8 } },
@@ -112,9 +115,12 @@ it('renders sources, templates, and cached queue options', () => {
   expect(within(sources).getByText('pip install -e .')).toBeTruthy()
   expect(within(sources).getByText('b @ e.example')).toBeTruthy()
   expect(within(sources).getByText('motion clips')).toBeTruthy()
-  expect(within(sources).getByText(zh['source.volumeRoot'])).toBeTruthy()
+  expect(within(sources).getAllByText(zh['source.volumeRoot'])).toHaveLength(2)
   expect(within(sources).getByText('/motion/v1')).toBeTruthy()
   expect(within(sources).getByText('/code/rlh')).toBeTruthy()
+  expect(within(sources).getByText('/users/e')).toBeTruthy()
+  expect(within(sources).getAllByText('/personal/repos')).toHaveLength(2)
+  expect(within(sources).getAllByText('/personal/pkgs')).toHaveLength(2)
   const templates = section(zh['templates.title'])
   expect(within(templates).getByText('rlh @ dev')).toBeTruthy()
   expect(within(templates).getByText('2 个 Pod，每个 8 卡')).toBeTruthy()
@@ -205,6 +211,16 @@ it('switches the form between kinds and volume types and keeps it open on failur
   expect(b.saveSource).toHaveBeenCalledWith({
     name: 'd', source: { kind: 'data', volume: { type: 'aoss', bucket: 'bk', endpoint: 'ep' }, mountPath: '/data', path: 'clips' },
   })
+  fireEvent.change(screen.getByLabelText(zh['field.kind']), { target: { value: 'storage' } })
+  expect(screen.getByLabelText<HTMLInputElement>(zh['field.reposDir']).value).toBe('repos')
+  fireEvent.change(screen.getByLabelText(zh['field.mountPathStorage']), { target: { value: '/personal' } })
+  fireEvent.change(screen.getByLabelText(zh['field.packagesDir']), { target: { value: ' pkgs ' } })
+  b.saveSource.mockResolvedValueOnce('again')
+  fireEvent.click(screen.getByRole('button', { name: zh['form.save'] }))
+  await screen.findByText('操作失败：again')
+  expect(b.saveSource).toHaveBeenLastCalledWith({
+    name: 'd', source: { kind: 'storage', volume: { type: 'aoss', bucket: 'bk', endpoint: 'ep' }, mountPath: '/personal', reposDir: 'repos', packagesDir: 'pkgs', path: 'clips' },
+  })
   fireEvent.change(screen.getByLabelText(zh['field.kind']), { target: { value: 'output' } })
   expect(screen.getByLabelText(zh['field.rootOutput'])).toBeTruthy()
   expect(screen.queryByLabelText(zh['field.mountPath'])).toBeNull()
@@ -236,7 +252,9 @@ it('edits a source with a locked name and an unlisted volume, and removes one af
 })
 
 it('round-trips every source kind through the form fields', () => {
-  for (const source of [code, data, output, { ...data, path: 'p' }, { ...code, setup: undefined }]) expect(sourceOf(draftOf('x', source))).toEqual(source)
+  for (const source of [code, data, output, storage, { ...storage, path: 'p' }, { ...data, path: 'p' }, { ...code, setup: undefined }]) {
+    expect(sourceOf(draftOf('x', source))).toEqual(source)
+  }
 })
 
 it('renders the decorative sidebar icon', () => {

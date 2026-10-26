@@ -1334,15 +1334,19 @@ export interface Config {
 
 - `inject`: `sco` · `storageDomain`
 - `refs`: `ScoFramework` (`@deepseek-ai/dsh-experimental-sco/types`) · `ScoImageType` (`@deepseek-ai/dsh-experimental-sco/types`) · `ScoPriority` (`@deepseek-ai/dsh-experimental-sco/types`)
-- `source`: [`packages/experimental/sco-submit/src/index.ts:24`](../packages/experimental/sco-submit/src/index.ts)
+- `source`: [`packages/experimental/sco-submit/src/index.ts:27`](../packages/experimental/sco-submit/src/index.ts)
 
 ```ts config-catalog
-/** Job templates and the output mount path. */
+/** Job templates, the output mount path, and the container commands that prepare storage. */
 export interface Config {
   /** Job templates by name; their source references resolve at submission. */
   templates?: Record<string, ScoJobTemplate>
   /** Container path where every job mounts its output directory. */
   outputMountPath?: string
+  /** Command that runs git in job containers when a repository is missing from the storage. */
+  gitCommand?: string
+  /** Command that runs pip in job containers to install packages from the storage and download missing ones. */
+  pipCommand?: string
 }
 
 /** Image, sources, command, and resource defaults that a submission starts from. */
@@ -1361,6 +1365,12 @@ export type ScoJobTemplate = {
   data?: string[]
   /** Output source name. */
   output?: string
+  /** Storage source name; required when `repos` or `packages` is set. */
+  storage?: string
+  /** Git repositories the job needs, as `<url>` or `<url>#<ref>`; each is cloned into the storage only when it is not there. */
+  repos?: string[]
+  /** pip requirement specifiers or `-r <absolute path>` entries; installed from the storage, downloading into it only when missing. */
+  packages?: string[]
   /** Job command, run in the code directory after `setup`. */
   command?: string
   /** Environment variables; values must not contain commas. */

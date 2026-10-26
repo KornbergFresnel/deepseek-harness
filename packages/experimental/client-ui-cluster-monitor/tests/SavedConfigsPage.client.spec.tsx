@@ -33,7 +33,8 @@ function page(initial: Mirror<ScoConfigOverview>) {
   const store = createSnapshotStore(initial)
   const saveConfig = vi.fn(async () => null as string | null)
   const deleteConfig = vi.fn(async () => null as string | null)
-  const props = { useOverview: bindSnapshotSelector(store), saveConfig, deleteConfig, t } as SavedConfigsPageProps
+  const storage = { saveSource: vi.fn(), loadVolumes: vi.fn() }
+  const props = { useOverview: bindSnapshotSelector(store), saveConfig, deleteConfig, storage, t } as SavedConfigsPageProps
   return { ...render(<SavedConfigsPage {...props} />), store, saveConfig, deleteConfig }
 }
 

@@ -60,8 +60,27 @@ export type ScoOutputSource = {
   description?: string
 }
 
-/** A registered data, code, or output location. */
-export type ScoSource = ScoDataSource | ScoCodeSource | ScoOutputSource
+/**
+ * Personal storage that keeps code repositories and Python package files for reuse across jobs.
+ * A submission that names repositories or packages mounts it, uses what it holds, and downloads only what is missing into it.
+ */
+export type ScoStorageSource = {
+  kind: 'storage'
+  volume: ScoVolume
+  /** Directory (AFS) or prefix (AOSS) inside the volume; omitted mounts the volume root. */
+  path?: string
+  /** Absolute mount path inside the container. */
+  mountPath: string
+  /** Directory under the mount holding one clone per repository, named `<repo>` or `<repo>@<ref>`. */
+  reposDir: string
+  /** Directory under the mount holding package files that pip installs from and downloads into. */
+  packagesDir: string
+  /** What the storage holds, for the model and the user. */
+  description?: string
+}
+
+/** A registered data, code, output, or storage location. */
+export type ScoSource = ScoDataSource | ScoCodeSource | ScoOutputSource | ScoStorageSource
 
 /** Image, sources, command, and resource defaults that a submission starts from. */
 export type ScoJobTemplate = {
@@ -79,6 +98,12 @@ export type ScoJobTemplate = {
   data?: string[]
   /** Output source name. */
   output?: string
+  /** Storage source name; required when `repos` or `packages` is set. */
+  storage?: string
+  /** Git repositories the job needs, as `<url>` or `<url>#<ref>`; each is cloned into the storage only when it is not there. */
+  repos?: string[]
+  /** pip requirement specifiers or `-r <absolute path>` entries; installed from the storage, downloading into it only when missing. */
+  packages?: string[]
   /** Job command, run in the code directory after `setup`. */
   command?: string
   /** Environment variables; values must not contain commas. */
@@ -130,6 +155,26 @@ export type ScoResolvedSubmission = {
   code?: { name: string; ref: string }
   data: string[]
   output?: string
+  /** Storage source, the repositories with their container paths, and the packages the startup command prepares. */
+  storage?: ScoStoragePlan
+}
+
+/** A repository a submission needs and where the job finds it. */
+export type ScoRepoPlan = {
+  /** Clone URL. */
+  url: string
+  /** Branch, tag, or commit checked out after cloning; absent clones the default branch. */
+  ref?: string
+  /** Container path of the clone in the storage. */
+  path: string
+}
+
+/** What a submission prepares from its storage source before the job command. */
+export type ScoStoragePlan = {
+  /** Storage source name. */
+  name: string
+  repos: ScoRepoPlan[]
+  packages: string[]
 }
 
 /** Outcome of a submission. */
@@ -139,6 +184,8 @@ export type ScoSubmission =
     resolved: CreateScoJobRequest
     /** Merged `TrainingJob` returned by the CLI. */
     job: JsonValue
+    /** Repositories and packages the startup command prepares from the storage source. */
+    storage?: ScoStoragePlan
   }
   | {
     kind: 'created'
@@ -146,6 +193,8 @@ export type ScoSubmission =
     name: string
     /** CLI confirmation text. */
     output: string
+    /** Repositories and packages the startup command prepares from the storage source. */
+    storage?: ScoStoragePlan
   }
 
 /** One queue a workspace may submit to. */
@@ -182,6 +231,8 @@ export type ScoJobSubmitted = {
   code?: { name: string; ref: string }
   data: string[]
   output?: string
+  /** Storage source name. */
+  storage?: string
 }
 
 /** One queue of the cached resource options with the machine types found in its CLI object. */

@@ -7,7 +7,7 @@ export const COUNT_FIELDS = ['podCount', 'gpuCount', 'cpuCount', 'memoryGib', 's
 
 /** Text fields copied verbatim. */
 const TEXT_FIELDS = [
-  'image', 'imageType', 'code', 'ref', 'output', 'workspace', 'queueId', 'machineType', 'priority', 'framework', 'command',
+  'image', 'imageType', 'code', 'ref', 'output', 'storage', 'workspace', 'queueId', 'machineType', 'priority', 'framework', 'command',
 ] as const
 
 /** An integer field of the form. */
@@ -18,6 +18,10 @@ type TextField = typeof TEXT_FIELDS[number]
 export type WorkloadDraft = Record<CountField | TextField, string> & {
   /** Selected data source names. */
   data: string[]
+  /** Repository entries, one per line. */
+  repos: string
+  /** Package entries, one per line. */
+  packages: string
   /** `KEY=VALUE` lines. */
   env: string
   enableQueuing: boolean
@@ -38,6 +42,8 @@ export function draftOf(spec: ScoWorkloadSpec): WorkloadDraft {
     ...text,
     ...counts,
     data: [...spec.data ?? []],
+    repos: (spec.repos ?? []).join('\n'),
+    packages: (spec.packages ?? []).join('\n'),
     env: Object.entries(spec.env ?? {}).map(([key, value]) => `${key}=${value}`).join('\n'),
     enableQueuing: spec.enableQueuing ?? false,
   }
@@ -68,6 +74,10 @@ export function specOf(
     spec[key] = Number(value)
   }
   if (draft.data.length > 0) spec.data = [...draft.data]
+  for (const key of ['repos', 'packages'] as const) {
+    const entries = draft[key].split('\n').map(line => line.trim()).filter(line => line !== '')
+    if (entries.length > 0) spec[key] = entries
+  }
   const env: Record<string, string> = {}
   const lines = draft.env.split('\n')
   for (const [index, line] of lines.entries()) {
@@ -89,6 +99,9 @@ const FACT_LABELS: readonly (readonly [keyof ScoWorkloadSpec, ClusterWorkloadKey
   ['ref', 'field.ref'],
   ['data', 'field.data'],
   ['output', 'field.output'],
+  ['storage', 'field.storage'],
+  ['repos', 'field.repos'],
+  ['packages', 'field.packages'],
   ['workspace', 'field.workspace'],
   ['queueId', 'field.queue'],
   ['machineType', 'field.machineType'],

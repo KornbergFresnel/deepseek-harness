@@ -22,6 +22,7 @@ const overview: ScoConfigOverview = {
     { name: 'motion', source: { kind: 'data', volume: { type: 'afs', id: 'v' }, mountPath: '/data' } },
     { name: 'clips', source: { kind: 'data', volume: { type: 'afs', id: 'v' }, mountPath: '/clips' } },
     { name: 'runs', source: { kind: 'output', volume: { type: 'afs', id: 'v' }, root: 'runs' } },
+    { name: 'home', source: { kind: 'storage', volume: { type: 'afs', id: 'v' }, mountPath: '/personal', reposDir: 'repos', packagesDir: 'pkgs' } },
   ],
   options: {
     workspace: 'ws', fetchedAt: 't',
@@ -37,12 +38,14 @@ const overview: ScoConfigOverview = {
   ],
 }
 
+const storage = { saveSource: vi.fn(async () => null as string | null), loadVolumes: vi.fn(async () => ({ ok: true as const, value: [] })) }
+
 function form(overrides: Partial<WorkloadFormProps> = {}) {
   const onSubmit = vi.fn(async () => null as string | null)
   const onCancel = vi.fn()
   const props: WorkloadFormProps = {
     kind: 'job', heading: 'WBT', initial: { image: 'img:0', env: { SEED: '1' } }, overview, save: { mode: 'optional', name: '' },
-    submitLabel: 'form.confirm', busyLabel: 'form.confirming', onSubmit, onCancel, t, ...overrides,
+    submitLabel: 'form.confirm', busyLabel: 'form.confirming', onSubmit, onCancel, storage, t, ...overrides,
   }
   return { ...render(<WorkloadForm {...props} />), onSubmit, onCancel }
 }
@@ -55,12 +58,14 @@ describe('workload fields', () => {
   it('round-trips settings through form fields and drops blank and job-only fields', () => {
     const spec = {
       image: 'img', imageType: 'PRIVATE' as const, data: ['a'], env: { A: '1', B: 'x=y' }, gpuCount: 0, podCount: 2,
-      framework: 'MPI' as const, maxAttempts: 3, enableQueuing: true, queueId: 'q',
+      framework: 'MPI' as const, maxAttempts: 3, enableQueuing: true, queueId: 'q', storage: 'home', repos: ['https://h/x', 'https://h/y#v1'], packages: ['numpy'],
     }
     const draft = draftOf(spec)
-    expect(draft).toMatchObject({ image: 'img', gpuCount: '0', env: 'A=1\nB=x=y', enableQueuing: true, command: '' })
+    expect(draft).toMatchObject({ image: 'img', gpuCount: '0', env: 'A=1\nB=x=y', enableQueuing: true, command: '', repos: 'https://h/x\nhttps://h/y#v1', packages: 'numpy' })
     expect(specOf(draft, 'job')).toEqual({ ok: true, spec })
-    expect(specOf(draft, 'devmachine')).toEqual({ ok: true, spec: { image: 'img', imageType: 'PRIVATE', data: ['a'], env: { A: '1', B: 'x=y' }, gpuCount: 0, podCount: 2, queueId: 'q' } })
+    expect(specOf(draft, 'devmachine')).toEqual({ ok: true, spec: {
+      image: 'img', imageType: 'PRIVATE', data: ['a'], env: { A: '1', B: 'x=y' }, gpuCount: 0, podCount: 2, queueId: 'q', storage: 'home', repos: ['https://h/x', 'https://h/y#v1'], packages: ['numpy'],
+    } })
     expect(specOf(draftOf({}), 'job')).toEqual({ ok: true, spec: {} })
     expect(specOf({ ...draftOf({}), cpuCount: '1.5' }, 'job')).toEqual({ ok: false, problem: { kind: 'number', field: 'cpuCount' } })
     expect(specOf({ ...draftOf({}), env: 'A=1\n\nnope' }, 'job')).toEqual({ ok: false, problem: { kind: 'env', line: 3 } })
@@ -68,8 +73,9 @@ describe('workload fields', () => {
   })
 
   it('lists set fields in display order and suggests names', () => {
-    expect(specFacts({ env: { A: '1' }, image: 'img', data: ['a', 'b'], enableQueuing: false, gpuCount: 8 })).toEqual([
-      ['field.image', 'img'], ['field.data', 'a, b'], ['field.gpuCount', '8'], ['field.enableQueuing', 'false'], ['field.env', 'A=1'],
+    expect(specFacts({ env: { A: '1' }, image: 'img', data: ['a', 'b'], enableQueuing: false, gpuCount: 8, storage: 'home', packages: ['numpy', 'torch'] })).toEqual([
+      ['field.image', 'img'], ['field.data', 'a, b'], ['field.storage', 'home'], ['field.packages', 'numpy, torch'], ['field.gpuCount', '8'],
+      ['field.enableQueuing', 'false'], ['field.env', 'A=1'],
     ])
     expect(suggestName(' WBT Train: G1 / 8 GPUs ')).toBe('wbt-train-g1-8-gpus')
     expect(suggestName('训练')).toBe('')
@@ -87,6 +93,10 @@ describe('WorkloadForm', () => {
     change(zh['field.code'], 'rlh')
     change(zh['field.ref'], 'dev')
     change(zh['field.output'], 'runs')
+    expect(screen.getByText(zh['field.storageHint'])).toBeTruthy()
+    change(zh['field.storage'], 'home')
+    change(zh['field.repos'], ' https://github.com/org/rsl_rl.git \n\n')
+    change(zh['field.packages'], 'numpy\n torch==2.3.0')
     fireEvent.click(screen.getByRole('checkbox', { name: 'clips' }))
     fireEvent.click(screen.getByRole('checkbox', { name: 'motion' }))
     fireEvent.click(screen.getByRole('checkbox', { name: 'motion' }))
@@ -106,7 +116,8 @@ describe('WorkloadForm', () => {
     await waitFor(() => { expect(b.onSubmit).toHaveBeenCalledOnce() })
     expect(b.onSubmit).toHaveBeenCalledWith({
       spec: {
-        image: 'img:9', imageType: 'OFFICIAL', code: 'rlh', ref: 'dev', output: 'runs', workspace: 'ws2', queueId: 'q-cpu', machineType: 'c6',
+        image: 'img:9', imageType: 'OFFICIAL', code: 'rlh', ref: 'dev', output: 'runs', storage: 'home', workspace: 'ws2', queueId: 'q-cpu', machineType: 'c6',
+        repos: ['https://github.com/org/rsl_rl.git'], packages: ['numpy', 'torch==2.3.0'],
         priority: 'HIGH', framework: 'PYTORCH_DDP', command: 'python train.py', podCount: 2, gpuCount: 8, data: ['clips'],
         env: { SEED: '2', MODE: 'offline' }, enableQueuing: true,
       },

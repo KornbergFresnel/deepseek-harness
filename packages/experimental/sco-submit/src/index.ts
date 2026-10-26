@@ -1,5 +1,5 @@
 /**
- * Registered data, code, and output sources, configured job templates, cached resource options, template-based SSP submission,
+ * Registered data, code, output, and storage sources, configured job templates, cached resource options, template-based SSP submission,
  * and the `clusterConfig` Remote namespace that the cluster configuration page reads and edits.
  */
 
@@ -11,7 +11,10 @@ import type { ToolCallId } from '@deepseek-ai/dsh-llm/brand'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import type { Domain } from '@deepseek-ai/dsh-storage-domain'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
-import { machineTypes, mentions, mountPath, QUEUE_ID, queueIds, RESOURCE_FAILURE, resolveSubmission, sourceName, validSource } from './resolve.ts'
+import {
+  machineTypes, mentions, mountPath, packageArgs, QUEUE_ID, queueIds, repoEntry, RESOURCE_FAILURE, resolveSubmission, sourceName,
+  validSource,
+} from './resolve.ts'
 import type {
   ScoConfigForm, ScoConfigFormAnswer, ScoConfigFormOutcome, ScoConfigOverview, ScoConfigSaveRequest, ScoJobSubmitted, ScoJobTemplate,
   ScoResolvedSubmission, ScoResourceOptions, ScoResourceOptionsRequest, ScoSavedConfig, ScoSource, ScoSourceSaveRequest, ScoSubmission,
@@ -20,12 +23,16 @@ import type {
 
 export type * from './types.ts'
 
-/** Job templates and the output mount path. */
+/** Job templates, the output mount path, and the container commands that prepare storage. */
 export interface Config {
   /** Job templates by name; their source references resolve at submission. */
   templates?: Record<string, ScoJobTemplate>
   /** Container path where every job mounts its output directory. */
   outputMountPath?: string
+  /** Command that runs git in job containers when a repository is missing from the storage. */
+  gitCommand?: string
+  /** Command that runs pip in job containers to install packages from the storage and download missing ones. */
+  pipCommand?: string
 }
 
 declare module '@deepseek-ai/cordis' {
@@ -66,6 +73,15 @@ const sourceSchema = zod.discriminatedUnion('kind', [
     description: zod.string().exactOptional(),
   }),
   zod.object({ kind: zod.literal('output'), volume: volumeSchema, root: zod.string(), description: zod.string().exactOptional() }),
+  zod.object({
+    kind: zod.literal('storage'),
+    volume: volumeSchema,
+    path: zod.string().exactOptional(),
+    mountPath: zod.string(),
+    reposDir: zod.string(),
+    packagesDir: zod.string(),
+    description: zod.string().exactOptional(),
+  }),
 ])
 
 const optionsSchema = zod.object({
@@ -84,6 +100,9 @@ const specSchema = zod.strictObject({
   ref: zod.string().exactOptional(),
   data: zod.array(zod.string()).exactOptional(),
   output: zod.string().exactOptional(),
+  storage: zod.string().exactOptional(),
+  repos: zod.array(zod.string()).exactOptional(),
+  packages: zod.array(zod.string()).exactOptional(),
   command: zod.string().exactOptional(),
   env: zod.record(zod.string(), zod.string()).exactOptional(),
   framework: zod.enum(['PYTORCH_DDP', 'MPI', 'RAY_JOB', 'TENSORFLOW_PS', 'FRAMEWORK_CUSTOM']).exactOptional(),
@@ -129,6 +148,9 @@ const templateSchema: z<ScoJobTemplate> = z.object({
   ref: z.string(),
   data: z.array(z.string()),
   output: z.string(),
+  storage: z.string(),
+  repos: z.array(z.string()),
+  packages: z.array(z.string()),
   command: z.string(),
   env: z.dict(z.string()),
   framework: z.union(['PYTORCH_DDP', 'MPI', 'RAY_JOB', 'TENSORFLOW_PS', 'FRAMEWORK_CUSTOM'] as const),
@@ -168,9 +190,11 @@ export function workloadSpec(spec: ScoWorkloadSpec): ScoWorkloadSpec {
   if (result.queueId !== undefined && !QUEUE_ID.test(result.queueId)) {
     throw new Error(`sco-submit: queueId "${result.queueId}" must be a full queue resource id (/subscriptions/…/clusters/<cluster>/queues/<queue>)`)
   }
-  for (const reference of [result.code, result.output, result.data].flat()) {
+  for (const reference of [result.code, result.output, result.storage, result.data].flat()) {
     if (reference !== undefined) sourceName('source name in workload settings', reference)
   }
+  result.repos?.forEach(repoEntry)
+  result.packages?.forEach(packageArgs)
   return result
 }
 
@@ -191,10 +215,14 @@ export class ScoSubmit extends TypertRemoteService {
   static Config: z<Config> = z.object({
     templates: z.dict(templateSchema).default({}),
     outputMountPath: z.string().default('/outputs'),
+    gitCommand: z.string().min(1).default('git'),
+    pipCommand: z.string().min(1).default('python -m pip'),
   })
 
   private readonly templates: Readonly<Record<string, ScoJobTemplate>>
   private readonly outputMountPath: string
+  private readonly gitCommand: string
+  private readonly pipCommand: string
   private readonly domain: Promise<Domain<typeof submitDomain>>
   private readonly listeners = new Set<() => void>()
   private readonly forms = new Map<ToolCallId, {
@@ -214,11 +242,15 @@ export class ScoSubmit extends TypertRemoteService {
     const resolved = config as Required<Config>
     this.templates = resolved.templates
     this.outputMountPath = mountPath('outputMountPath', resolved.outputMountPath)
+    this.gitCommand = resolved.gitCommand
+    this.pipCommand = resolved.pipCommand
     for (const [name, template] of Object.entries(this.templates)) {
       sourceName('template name', name)
-      for (const reference of [template.code, template.output, template.data].flat()) {
+      for (const reference of [template.code, template.output, template.storage, template.data].flat()) {
         if (reference !== undefined) sourceName(`source name in template "${name}"`, reference)
       }
+      template.repos?.forEach(repoEntry)
+      template.packages?.forEach(packageArgs)
     }
     this.domain = ctx.storageDomain.open(submitDomain)
     ctx.effect(async () => {
@@ -321,7 +353,9 @@ export class ScoSubmit extends TypertRemoteService {
    */
   async resolve(request: SubmitScoJobRequest): Promise<ScoResolvedSubmission> {
     const sources = new Map((await this.domain).table('sources').entries())
-    return resolveSubmission(request, { sources, templates: this.templates, outputMountPath: this.outputMountPath })
+    return resolveSubmission(request, {
+      sources, templates: this.templates, outputMountPath: this.outputMountPath, gitCommand: this.gitCommand, pipCommand: this.pipCommand,
+    })
   }
 
   /**
@@ -356,7 +390,8 @@ export class ScoSubmit extends TypertRemoteService {
       }
       throw new Error(`${message(error)}; resource options for workspace ${workspace} were refreshed`, { cause: error })
     }
-    if (creation.kind === 'dry-run') return { kind: 'dry-run', resolved: resolved.request, job: creation.job }
+    const storage = resolved.storage === undefined ? {} : { storage: resolved.storage }
+    if (creation.kind === 'dry-run') return { kind: 'dry-run', resolved: resolved.request, job: creation.job, ...storage }
     this.ctx.emit('sco/job-submitted', {
       name: creation.name,
       ...workspace === undefined ? {} : { workspace },
@@ -364,8 +399,9 @@ export class ScoSubmit extends TypertRemoteService {
       ...resolved.code === undefined ? {} : { code: resolved.code },
       data: resolved.data,
       ...resolved.output === undefined ? {} : { output: resolved.output },
+      ...resolved.storage === undefined ? {} : { storage: resolved.storage.name },
     })
-    return { kind: 'created', resolved: resolved.request, name: creation.name, output: creation.output }
+    return { kind: 'created', resolved: resolved.request, name: creation.name, output: creation.output, ...storage }
   }
 
   /**

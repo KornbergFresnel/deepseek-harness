@@ -241,6 +241,22 @@ describe('SSP job tools through real Loader composition', () => {
     expect(text(await call(ctx, agent, 'sco_source_add', { name: 'x', kind: 'data', volumeType: 'afs', mountPath: '/x' }))).toContain('volumeId is required for this source')
     expect(text(await call(ctx, agent, 'sco_source_add', { name: 'x', kind: 'output', volumeType: 'afs', volumeId: 'v', root: 'o', mountPath: '/x' }))).toContain('mountPath does not apply to output sources')
     expect(text(await call(ctx, agent, 'sco_source_add', { name: 'x', kind: 'data', volumeType: 'aoss', bucket: 'b', mountPath: '/x' }))).toContain('endpoint is required for this source')
+    const home = { name: 'home', kind: 'storage', volumeType: 'afs', volumeId: 'vol-home', path: 'users/e', mountPath: '/personal', reposDir: 'repos', packagesDir: 'pkgs' }
+    expect((await call(ctx, agent, 'sco_source_add', home)).value).toEqual({
+      name: 'home', source: { kind: 'storage', volume: { type: 'afs', id: 'vol-home' }, path: 'users/e', mountPath: '/personal', reposDir: 'repos', packagesDir: 'pkgs' },
+    })
+    const { reposDir: _reposDir, ...noRepos } = home
+    expect(text(await call(ctx, agent, 'sco_source_add', { ...noRepos, name: 'y' }))).toContain('reposDir is required for this source')
+    expect(text(await call(ctx, agent, 'sco_source_add', { ...home, name: 'y', root: 'r' }))).toContain('root does not apply to storage sources')
+    const { path: _path, ...rootless } = home
+    expect((await call(ctx, agent, 'sco_source_update', rootless)).value).toMatchObject({ source: { mountPath: '/personal' } })
+    const prepared = await call(ctx, agent, 'sco_job_submit', {
+      name: 'job-s', image: 'img', command: 'run', storage: 'home', repos: ['https://github.com/org/rsl_rl.git#v2'], packages: ['numpy'], dryRun: true,
+    })
+    expect(prepared.value).toMatchObject({
+      kind: 'dry-run', storage: { name: 'home', repos: [{ url: 'https://github.com/org/rsl_rl.git', ref: 'v2', path: '/personal/repos/rsl_rl@v2' }], packages: ['numpy'] },
+    })
+    await call(ctx, agent, 'sco_source_remove', { name: 'home' })
 
     const options = await call(ctx, agent, 'sco_resource_options', {})
     expect(options.value).toMatchObject({ workspace: 'team-a', queues: [{ cluster: 'c1', queue: 'gpu-a' }, { cluster: 'c2', queue: 'cpu-b' }] })

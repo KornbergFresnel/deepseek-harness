@@ -3,23 +3,23 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/experimental/sco-submit/README.md
 /:
-  en: 4061cf6b03b865ca
-  zh: 9ee5076d9a8eb85b
+  en: 311c3fadf91c3391
+  zh: 7438781a51dbbb46
 /deepseek-ai-dsh-experimental-sco-submit:
   en: 1c319d5c110b73ed
   zh: 54ba04eb46774cc2
 /deepseek-ai-dsh-experimental-sco-submit/summary:
-  en: cbabf8d7b4151df6
-  zh: 92726f24ed195ab7
+  en: faf683f0d2b97971
+  zh: e9b8303ebd462368
 /deepseek-ai-dsh-experimental-sco-submit/table-of-contents:
   en: d152484eb41ac6b4
   zh: 2f8a621b991260a1
 /deepseek-ai-dsh-experimental-sco-submit/use-this-package:
-  en: 2a963a129322d45e
-  zh: cf0b3ce0e0f252e9
+  en: 89a727856436f5cd
+  zh: 14ea99e1fa3e4f1d
 /deepseek-ai-dsh-experimental-sco-submit/understand-the-implementation:
-  en: 309716c6af4fee6f
-  zh: bfd64cf8ae8db9eb
+  en: 534c47461076520f
+  zh: 1bb88ce85ed597d6
 /deepseek-ai-dsh-experimental-sco-submit/further-exploration:
   en: 9b35224848cbc89f
   zh: a5dc294840315ad8
@@ -30,8 +30,8 @@
   en: 4c5043d3e49b9f46
   zh: c615c4ff7040a76d
 /deepseek-ai-dsh-experimental-sco-submit/known-limitations-and-deferred-work:
-  en: 4406ba21cae63463
-  zh: e3529c48c820ace4
+  en: 2a52e1f468385721
+  zh: 665992f53cb725f2
 /deepseek-ai-dsh-experimental-sco-submit/known-limitations-and-deferred-work/dev-note:
   en: dfa863a3b3a07de3
   zh: 9e975fb247b8db9a

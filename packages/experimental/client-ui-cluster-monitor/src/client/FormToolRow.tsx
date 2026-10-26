@@ -7,6 +7,7 @@ import type {
   ScoConfigForm, ScoConfigFormAnswer, ScoConfigFormOutcome, ScoConfigOverview, ScoConfigSaveRequest, ScoWorkloadKind, ScoWorkloadSpec,
 } from '@deepseek-ai/dsh-experimental-sco-submit/types'
 import type { Mirror } from './source.ts'
+import type { StorageActions } from './StorageAdder.tsx'
 import { specFacts, suggestName } from './workload.ts'
 import { WorkloadForm, type WorkloadTranslate } from './WorkloadForm.tsx'
 import css from './FormToolRow.module.css'
@@ -21,6 +22,8 @@ export interface FormRowInjected {
   readonly answer: (callId: string, answer: ScoConfigFormAnswer) => Promise<string | null>
   /** Save settings as a reusable configuration; resolves to a failure message or null. */
   readonly saveConfig: (request: ScoConfigSaveRequest) => Promise<string | null>
+  /** Register a personal storage source from the form. */
+  readonly storage: StorageActions
 }
 
 /** Row props derived from the keyed tool seat, the injected face, and the plugin dictionary. */
@@ -139,12 +142,12 @@ function ResultRow({ props, kind, title }: { props: Extract<FormToolRowProps, { 
 }
 
 function OpenForm({ props, form }: { props: FormToolRowProps; form: ScoConfigForm }) {
-  const { useOverview, answer, t } = props
+  const { useOverview, answer, storage, t } = props
   const overview = useOverview(snapshot => snapshot.value)
   return (
     <WorkloadForm kind={form.kind} heading={form.title ?? t(`form.title.${form.kind}`)} initial={form.initial} overview={overview}
       suggested={form.suggested} save={{ mode: 'optional', name: form.suggested ?? suggestName(form.title ?? '') }}
-      submitLabel="form.confirm" busyLabel="form.confirming" t={t}
+      submitLabel="form.confirm" busyLabel="form.confirming" storage={storage} t={t}
       onSubmit={result => answer(form.callId, { kind: 'confirmed', ...result })}
       onCancel={() => { void answer(form.callId, { kind: 'cancelled' }) }} />
   )

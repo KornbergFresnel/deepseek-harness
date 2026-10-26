@@ -2674,7 +2674,7 @@ todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为
 
 ### `sco_config_form`
 
-在聊天中打开交互式表单，让用户设置 SSP 训练任务或云开发机：镜像、挂载的数据、代码和输出位置、工作空间、队列、机型、Pod 数、GPU、CPU、内存、优先级和命令。用它代替用文字询问这些设置。把用户已说明的内容预填到 initial。表单允许用户加载之前保存的配置；传入 suggested 可预选 sco_sources_list 中符合需求的已保存配置。等待用户确认或取消，然后返回确认的设置、加载的配置以及用户保存时使用的名称。确认的任务用返回的字段调用 sco_job_submit 提交（先 dryRun）。没有 sco 命令能创建开发机；把确认的开发机设置报告给用户。
+在聊天中打开交互式表单，让用户设置 SSP 训练任务或云开发机：镜像、挂载的数据、代码和输出位置、个人存储及要从中复用的代码库和安装包、工作空间、队列、机型、Pod 数、GPU、CPU、内存、优先级和命令。用它代替用文字询问这些设置。把用户已说明的内容预填到 initial。用户可以在表单里登记个人存储；确认结果的 storage 字段给出它的名称。表单允许用户加载之前保存的配置；传入 suggested 可预选 sco_sources_list 中符合需求的已保存配置。等待用户确认或取消，然后返回确认的设置、加载的配置以及用户保存时使用的名称。确认的任务用返回的字段调用 sco_job_submit 提交（先 dryRun）。没有 sco 命令能创建开发机；把确认的开发机设置报告给用户。
 
 ```json
 {
@@ -2731,6 +2731,24 @@ todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为
         "output": {
           "type": "string",
           "description": "Output source name."
+        },
+        "storage": {
+          "type": "string",
+          "description": "Storage source name; needed for repos and packages."
+        },
+        "repos": {
+          "type": "array",
+          "description": "Git repositories as <clone URL> or <clone URL>#<branch, tag, or commit>.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "packages": {
+          "type": "array",
+          "description": "pip requirement specifiers such as torch==2.3.0, or -r <absolute path to a requirements file>.",
+          "items": {
+            "type": "string"
+          }
         },
         "command": {
           "type": "string",
@@ -3089,7 +3107,7 @@ todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为
 
 ### `sco_job_submit`
 
-提交由模板和已登记数据源组合的 SSP 任务：数据源挂载在各自路径，代码库把根目录下所选 ref 的目录挂载到挂载点并在执行 setup 后运行命令，输出位置把根目录下以任务名命名的目录挂载到固定输出路径。请求字段覆盖模板。先用 dryRun 运行并把展开后的参数给用户看；真正提交会询问用户。从 sco_resource_options 中选择 machineType 和 queueId。
+提交由模板和已登记数据源组合的 SSP 任务：数据源挂载在各自路径，代码库把根目录下所选 ref 的目录挂载到挂载点并在执行 setup 后运行命令，输出位置把根目录下以任务名命名的目录挂载到固定输出路径。把镜像里没有、任务需要的每个 git 代码库和 pip 安装包写进 repos 和 packages，并在 storage 中填写 sco_sources_list 里用户的个人存储，而不是在 command 里克隆或安装：任务直接使用个人存储里已有的副本，只把缺少的内容下载到个人存储，然后再运行命令。sco_sources_list 里没有个人存储时，先问用户个人存储在哪里，再用 sco_source_add 登记，或打开 sco_config_form 让用户在表单里登记。每个代码库以自己的名字克隆到个人存储的 reposDir 目录下，指定 ref 时名字后面加 @ 和 ref；结果在 storage 下列出这些路径。请求字段覆盖模板。先用 dryRun 运行并把展开后的参数给用户看；真正提交会询问用户。从 sco_resource_options 中选择 machineType 和 queueId。
 
 ```json
 {
@@ -3133,6 +3151,24 @@ todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为
     "output": {
       "type": "string",
       "description": "Output source name."
+    },
+    "storage": {
+      "type": "string",
+      "description": "Storage source name; needed for repos and packages."
+    },
+    "repos": {
+      "type": "array",
+      "description": "Git repositories as <clone URL> or <clone URL>#<branch, tag, or commit>.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "packages": {
+      "type": "array",
+      "description": "pip requirement specifiers such as torch==2.3.0, or -r <absolute path to a requirements file>.",
+      "items": {
+        "type": "string"
+      }
     },
     "command": {
       "type": "string",
@@ -3325,7 +3361,7 @@ todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为
 
 ### `sco_source_add`
 
-登记集群存储上新的数据、代码或输出位置。向用户询问卷和目录，用 sco_volumes_list 提供可选的卷，不要猜测。
+登记集群存储上新的数据、代码、输出或个人存储位置。向用户询问卷和目录，用 sco_volumes_list 提供可选的卷，不要猜测。
 
 ```json
 {
@@ -3337,11 +3373,12 @@ todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为
     },
     "kind": {
       "type": "string",
-      "description": "data: a dataset mounted at mountPath. code: snapshots under root/<ref>/, mounted at mountPath, where the command runs. output: job outputs under root/<job name>/, mounted at the fixed output path.",
+      "description": "data: a dataset mounted at mountPath. code: snapshots under root/<ref>/, mounted at mountPath, where the command runs. output: job outputs under root/<job name>/, mounted at the fixed output path. storage: the user's personal storage mounted at mountPath, keeping git clones under reposDir and pip package files under packagesDir for reuse across jobs.",
       "enum": [
         "data",
         "code",
-        "output"
+        "output",
+        "storage"
       ]
     },
     "volumeType": {
@@ -3365,7 +3402,7 @@ todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为
     },
     "path": {
       "type": "string",
-      "description": "Directory or prefix inside the volume (data); omit for the volume root."
+      "description": "Directory or prefix inside the volume (data, storage); omit for the volume root."
     },
     "root": {
       "type": "string",
@@ -3373,7 +3410,7 @@ todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为
     },
     "mountPath": {
       "type": "string",
-      "description": "Absolute container path (data, code)."
+      "description": "Absolute container path (data, code, storage)."
     },
     "defaultRef": {
       "type": "string",
@@ -3382,6 +3419,14 @@ todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为
     "setup": {
       "type": "string",
       "description": "Shell command run in the code directory before the job command (code)."
+    },
+    "reposDir": {
+      "type": "string",
+      "description": "Directory under the mount holding one clone per repository, for example repos (storage)."
+    },
+    "packagesDir": {
+      "type": "string",
+      "description": "Directory under the mount holding pip package files, for example packages (storage)."
     },
     "description": {
       "type": "string",
@@ -3432,11 +3477,12 @@ todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为
     },
     "kind": {
       "type": "string",
-      "description": "data: a dataset mounted at mountPath. code: snapshots under root/<ref>/, mounted at mountPath, where the command runs. output: job outputs under root/<job name>/, mounted at the fixed output path.",
+      "description": "data: a dataset mounted at mountPath. code: snapshots under root/<ref>/, mounted at mountPath, where the command runs. output: job outputs under root/<job name>/, mounted at the fixed output path. storage: the user's personal storage mounted at mountPath, keeping git clones under reposDir and pip package files under packagesDir for reuse across jobs.",
       "enum": [
         "data",
         "code",
-        "output"
+        "output",
+        "storage"
       ]
     },
     "volumeType": {
@@ -3460,7 +3506,7 @@ todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为
     },
     "path": {
       "type": "string",
-      "description": "Directory or prefix inside the volume (data); omit for the volume root."
+      "description": "Directory or prefix inside the volume (data, storage); omit for the volume root."
     },
     "root": {
       "type": "string",
@@ -3468,7 +3514,7 @@ todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为
     },
     "mountPath": {
       "type": "string",
-      "description": "Absolute container path (data, code)."
+      "description": "Absolute container path (data, code, storage)."
     },
     "defaultRef": {
       "type": "string",
@@ -3477,6 +3523,14 @@ todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为
     "setup": {
       "type": "string",
       "description": "Shell command run in the code directory before the job command (code)."
+    },
+    "reposDir": {
+      "type": "string",
+      "description": "Directory under the mount holding one clone per repository, for example repos (storage)."
+    },
+    "packagesDir": {
+      "type": "string",
+      "description": "Directory under the mount holding pip package files, for example packages (storage)."
     },
     "description": {
       "type": "string",
@@ -3495,7 +3549,7 @@ todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为
 
 ### `sco_sources_list`
 
-列出已登记的数据、代码和输出位置、已配置的任务模板、用户从之前表单保存的配置，以及每个任务挂载输出目录的固定容器路径。调用 sco_job_submit 前先调用它来选择名字；调用 sco_config_form 前先调用它来查找合适的已保存配置。
+列出已登记的数据、代码、输出和个人存储位置、已配置的任务模板、用户从之前表单保存的配置，以及每个任务挂载输出目录的固定容器路径。调用 sco_job_submit 前先调用它来选择名字；调用 sco_config_form 前先调用它来查找合适的已保存配置。
 
 ```json
 {

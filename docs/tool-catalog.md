@@ -2667,7 +2667,7 @@ Explicit experimental composition only. Creates a new branch and checkout from a
 
 ### `sco_config_form`
 
-Open an interactive form in the chat where the user sets up an SSP training job or a cloud development machine: image, mounted data, code, and output sources, workspace, queue, machine type, pods, GPUs, CPU, memory, priority, and command. Use it instead of asking for these settings in text. Prefill initial with everything the user already said. The form lets the user load a configuration saved earlier; pass suggested to preselect a saved configuration from sco_sources_list that fits the request. Waits until the user confirms or cancels, then returns the confirmed settings, the configuration loaded, and the name the user saved them under. Submit a confirmed job with sco_job_submit using the returned fields (dryRun first). No sco command creates development machines; report confirmed development machine settings to the user.
+Open an interactive form in the chat where the user sets up an SSP training job or a cloud development machine: image, mounted data, code, and output sources, the storage source with the repositories and packages to reuse from it, workspace, queue, machine type, pods, GPUs, CPU, memory, priority, and command. Use it instead of asking for these settings in text. Prefill initial with everything the user already said. The user can register a personal storage source from inside the form; the confirmed storage field names it. The form lets the user load a configuration saved earlier; pass suggested to preselect a saved configuration from sco_sources_list that fits the request. Waits until the user confirms or cancels, then returns the confirmed settings, the configuration loaded, and the name the user saved them under. Submit a confirmed job with sco_job_submit using the returned fields (dryRun first). No sco command creates development machines; report confirmed development machine settings to the user.
 
 ```json
 {
@@ -2724,6 +2724,24 @@ Open an interactive form in the chat where the user sets up an SSP training job 
         "output": {
           "type": "string",
           "description": "Output source name."
+        },
+        "storage": {
+          "type": "string",
+          "description": "Storage source name; needed for repos and packages."
+        },
+        "repos": {
+          "type": "array",
+          "description": "Git repositories as <clone URL> or <clone URL>#<branch, tag, or commit>.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "packages": {
+          "type": "array",
+          "description": "pip requirement specifiers such as torch==2.3.0, or -r <absolute path to a requirements file>.",
+          "items": {
+            "type": "string"
+          }
         },
         "command": {
           "type": "string",
@@ -3082,7 +3100,7 @@ Source: [`packages/experimental/tool-sco/src/index.ts`](../packages/experimental
 
 ### `sco_job_submit`
 
-Submit an SSP job composed from a template and registered sources: data sources mount at their paths, the code source mounts the chosen ref directory under its root and the command runs there after its setup, and the output source mounts a directory named after the job under its root at the fixed output path. Request fields override the template. Run with dryRun first and show the user the resolved flags; a real submission asks the user. Pick machineType and queueId from sco_resource_options.
+Submit an SSP job composed from a template and registered sources: data sources mount at their paths, the code source mounts the chosen ref directory under its root and the command runs there after its setup, and the output source mounts a directory named after the job under its root at the fixed output path. List every git repository and pip package the job needs that the image lacks in repos and packages, with the user's storage source from sco_sources_list in storage, instead of cloning or installing them in command: the job uses the copies already in the storage, and downloads only what is missing into the storage, before the command runs. When sco_sources_list has no storage source, ask the user where their personal storage is and register it with sco_source_add, or open sco_config_form, where the user can register it. Each repository is cloned into the storage's reposDir directory under its own name, followed by @ and the ref when one is given; the result lists the paths under storage. Request fields override the template. Run with dryRun first and show the user the resolved flags; a real submission asks the user. Pick machineType and queueId from sco_resource_options.
 
 ```json
 {
@@ -3126,6 +3144,24 @@ Submit an SSP job composed from a template and registered sources: data sources 
     "output": {
       "type": "string",
       "description": "Output source name."
+    },
+    "storage": {
+      "type": "string",
+      "description": "Storage source name; needed for repos and packages."
+    },
+    "repos": {
+      "type": "array",
+      "description": "Git repositories as <clone URL> or <clone URL>#<branch, tag, or commit>.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "packages": {
+      "type": "array",
+      "description": "pip requirement specifiers such as torch==2.3.0, or -r <absolute path to a requirements file>.",
+      "items": {
+        "type": "string"
+      }
     },
     "command": {
       "type": "string",
@@ -3318,7 +3354,7 @@ Source: [`packages/experimental/tool-sco/src/index.ts`](../packages/experimental
 
 ### `sco_source_add`
 
-Register a new data, code, or output source location on cluster storage. Ask the user for the volume and directory, offering volumes from sco_volumes_list; never guess them.
+Register a new data, code, output, or personal storage source location on cluster storage. Ask the user for the volume and directory, offering volumes from sco_volumes_list; never guess them.
 
 ```json
 {
@@ -3330,11 +3366,12 @@ Register a new data, code, or output source location on cluster storage. Ask the
     },
     "kind": {
       "type": "string",
-      "description": "data: a dataset mounted at mountPath. code: snapshots under root/<ref>/, mounted at mountPath, where the command runs. output: job outputs under root/<job name>/, mounted at the fixed output path.",
+      "description": "data: a dataset mounted at mountPath. code: snapshots under root/<ref>/, mounted at mountPath, where the command runs. output: job outputs under root/<job name>/, mounted at the fixed output path. storage: the user's personal storage mounted at mountPath, keeping git clones under reposDir and pip package files under packagesDir for reuse across jobs.",
       "enum": [
         "data",
         "code",
-        "output"
+        "output",
+        "storage"
       ]
     },
     "volumeType": {
@@ -3358,7 +3395,7 @@ Register a new data, code, or output source location on cluster storage. Ask the
     },
     "path": {
       "type": "string",
-      "description": "Directory or prefix inside the volume (data); omit for the volume root."
+      "description": "Directory or prefix inside the volume (data, storage); omit for the volume root."
     },
     "root": {
       "type": "string",
@@ -3366,7 +3403,7 @@ Register a new data, code, or output source location on cluster storage. Ask the
     },
     "mountPath": {
       "type": "string",
-      "description": "Absolute container path (data, code)."
+      "description": "Absolute container path (data, code, storage)."
     },
     "defaultRef": {
       "type": "string",
@@ -3375,6 +3412,14 @@ Register a new data, code, or output source location on cluster storage. Ask the
     "setup": {
       "type": "string",
       "description": "Shell command run in the code directory before the job command (code)."
+    },
+    "reposDir": {
+      "type": "string",
+      "description": "Directory under the mount holding one clone per repository, for example repos (storage)."
+    },
+    "packagesDir": {
+      "type": "string",
+      "description": "Directory under the mount holding pip package files, for example packages (storage)."
     },
     "description": {
       "type": "string",
@@ -3425,11 +3470,12 @@ Replace every field of a registered source.
     },
     "kind": {
       "type": "string",
-      "description": "data: a dataset mounted at mountPath. code: snapshots under root/<ref>/, mounted at mountPath, where the command runs. output: job outputs under root/<job name>/, mounted at the fixed output path.",
+      "description": "data: a dataset mounted at mountPath. code: snapshots under root/<ref>/, mounted at mountPath, where the command runs. output: job outputs under root/<job name>/, mounted at the fixed output path. storage: the user's personal storage mounted at mountPath, keeping git clones under reposDir and pip package files under packagesDir for reuse across jobs.",
       "enum": [
         "data",
         "code",
-        "output"
+        "output",
+        "storage"
       ]
     },
     "volumeType": {
@@ -3453,7 +3499,7 @@ Replace every field of a registered source.
     },
     "path": {
       "type": "string",
-      "description": "Directory or prefix inside the volume (data); omit for the volume root."
+      "description": "Directory or prefix inside the volume (data, storage); omit for the volume root."
     },
     "root": {
       "type": "string",
@@ -3461,7 +3507,7 @@ Replace every field of a registered source.
     },
     "mountPath": {
       "type": "string",
-      "description": "Absolute container path (data, code)."
+      "description": "Absolute container path (data, code, storage)."
     },
     "defaultRef": {
       "type": "string",
@@ -3470,6 +3516,14 @@ Replace every field of a registered source.
     "setup": {
       "type": "string",
       "description": "Shell command run in the code directory before the job command (code)."
+    },
+    "reposDir": {
+      "type": "string",
+      "description": "Directory under the mount holding one clone per repository, for example repos (storage)."
+    },
+    "packagesDir": {
+      "type": "string",
+      "description": "Directory under the mount holding pip package files, for example packages (storage)."
     },
     "description": {
       "type": "string",
@@ -3488,7 +3542,7 @@ Source: [`packages/experimental/tool-sco/src/index.ts`](../packages/experimental
 
 ### `sco_sources_list`
 
-List registered data, code, and output sources, configured job templates, configurations the user saved from earlier forms, and the fixed container path where every job mounts its output directory. Call before sco_job_submit to pick names, and before sco_config_form to find a saved configuration that fits.
+List registered data, code, output, and personal storage sources, configured job templates, configurations the user saved from earlier forms, and the fixed container path where every job mounts its output directory. Call before sco_job_submit to pick names, and before sco_config_form to find a saved configuration that fits.
 
 ```json
 {

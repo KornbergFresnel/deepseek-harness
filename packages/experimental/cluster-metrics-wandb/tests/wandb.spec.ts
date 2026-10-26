@@ -27,7 +27,8 @@ async function boot(key: string | null = 'secret', config: Partial<Wandb.Config>
   } as never)
   const resolve = vi.fn(async () => key === null ? undefined : { value: key, source: 'environment' })
   ctx.provide('credentials', { resolve } as never)
-  await ctx.plugin(Wandb, config)
+  // Schemastery fills the omitted fields with their defaults.
+  await ctx.plugin(Wandb, Wandb.Config(config as Wandb.Config))
   return { ctx, registered, unregister, resolve, source: () => registered.get('wandb')! }
 }
 

@@ -5,6 +5,7 @@ import type { HostObservable, InjectFace, PropsLocale, PropsRuntime } from '@dee
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { ScoConfigOverview, ScoConfigSaveRequest, ScoSavedConfig, ScoWorkloadKind } from '@deepseek-ai/dsh-experimental-sco-submit/types'
 import type { Mirror } from './source.ts'
+import type { StorageActions } from './StorageAdder.tsx'
 import { specFacts } from './workload.ts'
 import { WorkloadForm, type WorkloadTranslate } from './WorkloadForm.tsx'
 import css from './SavedConfigsPage.module.css'
@@ -16,6 +17,8 @@ export interface SavedConfigsInjected {
   readonly saveConfig: (request: ScoConfigSaveRequest) => Promise<string | null>
   /** Delete a configuration; resolves to a failure message or null. */
   readonly deleteConfig: (name: string) => Promise<string | null>
+  /** Register a personal storage source from the form. */
+  readonly storage: StorageActions
 }
 
 /** Page props derived from the `main` seat, the injected face, and the plugin dictionary. */
@@ -83,7 +86,7 @@ function Detail({ name, config, edit, remove, t }: {
  * @param props - overview mirror, actions, and dictionary.
  * @returns the page.
  */
-export function SavedConfigsPage({ useOverview, saveConfig, deleteConfig, t }: SavedConfigsPageProps) {
+export function SavedConfigsPage({ useOverview, saveConfig, deleteConfig, storage, t }: SavedConfigsPageProps) {
   const mirror = useOverview(snapshot => snapshot)
   const overview = mirror.value
   const configs = overview?.configs ?? []
@@ -96,7 +99,7 @@ export function SavedConfigsPage({ useOverview, saveConfig, deleteConfig, t }: S
     detail = (
       <WorkloadForm key={`new-${pane.workload}`} kind={pane.workload} heading={t('presets.newTitle', { kind: t(`kind.${pane.workload}`) })}
         initial={{}} overview={overview} save={{ mode: 'required', name: '', description: '', lockName: false }}
-        submitLabel="form.save" busyLabel="form.saving" t={t} onCancel={() => { close() }}
+        submitLabel="form.save" busyLabel="form.saving" storage={storage} t={t} onCancel={() => { close() }}
         onSubmit={async ({ spec, save }) => {
           const request: ScoConfigSaveRequest = { name: '', ...save, kind: pane.workload, spec }
           const message = await saveConfig(request)
@@ -111,7 +114,7 @@ export function SavedConfigsPage({ useOverview, saveConfig, deleteConfig, t }: S
       <WorkloadForm key={`edit-${current.name}`} kind={current.config.kind} heading={t('presets.editTitle', { name: current.name })}
         initial={current.config.spec} overview={overview}
         save={{ mode: 'required', name: current.name, description: current.config.description ?? '', lockName: true }}
-        submitLabel="form.save" busyLabel="form.saving" t={t} onCancel={() => { close(current.name) }}
+        submitLabel="form.save" busyLabel="form.saving" storage={storage} t={t} onCancel={() => { close(current.name) }}
         onSubmit={async ({ spec, save }) => {
           const message = await saveConfig({ ...save, name: current.name, kind: current.config.kind, spec, replace: true })
           if (message === null) close(current.name)

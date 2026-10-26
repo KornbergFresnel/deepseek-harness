@@ -1,7 +1,10 @@
 /** Source validation and submission expansion into `createJob` flags. */
 
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
-import type { ScoJobTemplate, ScoQueueOption, ScoResolvedSubmission, ScoSource, ScoVolume, SubmitScoJobRequest } from './types.ts'
+import type {
+  ScoJobTemplate, ScoQueueOption, ScoRepoPlan, ScoResolvedSubmission, ScoSource, ScoStoragePlan, ScoStorageSource, ScoVolume,
+  SubmitScoJobRequest,
+} from './types.ts'
 
 /** Source and template names. */
 const NAME = /^[a-z0-9][a-z0-9-]{0,62}$/
@@ -15,6 +18,14 @@ const VOLUME_ID = /^[A-Za-z0-9-]+$/
 const BUCKET = /^[a-z0-9][a-z0-9.-]*$/
 /** Endpoint hosts; a port would add a `:` that ends the field in the mount string. */
 const ENDPOINT = /^[A-Za-z0-9.-]+$/
+/** Git clone URLs over HTTP(S), SSH, or scp-like `user@host:path`, without shell metacharacters or quotes. */
+const REPO_URL = /^(?:(?:https?|ssh|git):\/\/[A-Za-z0-9._~:@%+/-]+|[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:[A-Za-z0-9._~%+/-]+)$/
+/** Git branch, tag, or commit names. */
+const GIT_REF = /^[A-Za-z0-9._][A-Za-z0-9._/+-]*$/
+/** pip requirement specifiers without environment markers, spaces, or quotes. */
+const REQUIREMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*(\[[A-Za-z0-9._,-]+\])?([<>=!~]=?[A-Za-z0-9.*+_-]+(,[<>=!~]=?[A-Za-z0-9.*+_-]+)*)?$/
+/** `-r <file>` requirement file entries. */
+const REQUIREMENT_FILE = /^-r\s+(\S+)$/
 
 /** Full queue resource ids; capture groups are the cluster and queue names. */
 export const QUEUE_ID = /^\/subscriptions\/.+\/clusters\/([^/]+)\/queues\/([^/]+)$/
@@ -97,7 +108,49 @@ export function validSource(source: ScoSource): ScoSource {
       return { ...source, root: subpath('root', source.root) }
     case 'output':
       return { ...source, root: subpath('root', source.root) }
+    case 'storage': {
+      const { path, ...rest } = source
+      mountPath('mountPath', source.mountPath)
+      const dir = path === undefined ? '' : subpath('path', path)
+      const layout = { reposDir: storageDir('reposDir', source.reposDir), packagesDir: storageDir('packagesDir', source.packagesDir) }
+      return dir === '' ? { ...rest, ...layout } : { ...rest, ...layout, path: dir }
+    }
   }
+}
+
+/** A non-empty directory under a storage mount. */
+function storageDir(key: string, value: string): string {
+  const dir = subpath(key, value)
+  if (dir === '') throw new Error(`sco-submit: ${key} must name a directory under the storage mount`)
+  return dir
+}
+
+/**
+ * Split a repository entry into its clone URL and ref, and name its directory in the storage.
+ * @param entry - `<url>` or `<url>#<ref>`.
+ * @returns the URL, the optional ref, and the directory name `<repo>` or `<repo>@<ref>` with `/` in the ref written as `_`.
+ * @throws Error when the URL or ref is outside the accepted grammar.
+ */
+export function repoEntry(entry: string): { url: string; ref?: string; dir: string } {
+  const [url = '', ref, ...extra] = entry.trim().split('#')
+  if (extra.length > 0) throw new Error(`sco-submit: repository "${entry.trim()}" has more than one "#"`)
+  check(REPO_URL, 'repository', url, 'must be an http(s), ssh, git, or user@host:path clone URL without spaces or quotes')
+  if (ref !== undefined) check(GIT_REF, 'repository ref', ref, 'must be a branch, tag, or commit name')
+  const name = url.slice(Math.max(url.lastIndexOf('/'), url.lastIndexOf(':')) + 1).replace(/\.git$/, '')
+  check(/^[A-Za-z0-9._-]+$/, 'repository name', name, 'must end the URL as a directory name')
+  return { url, ...ref === undefined ? {} : { ref }, dir: ref === undefined ? name : `${name}@${ref.replaceAll('/', '_')}` }
+}
+
+/**
+ * Reject a package entry that is neither a pip requirement specifier nor `-r <absolute path>`.
+ * @param entry - package entry.
+ * @returns the pip arguments of the entry.
+ */
+export function packageArgs(entry: string): string[] {
+  const trimmed = entry.trim()
+  const file = REQUIREMENT_FILE.exec(trimmed)
+  if (file !== null) return ['-r', mountPath('requirements file', file[1] as string)]
+  return [check(REQUIREMENT, 'package', trimmed, 'must be a pip requirement such as torch==2.3.0 or numpy>=1.26,<2, or -r <absolute path>')]
 }
 
 /** Build one `--volume-mount` value; `subdir` comes from {@link volumeDir}. */
@@ -108,11 +161,44 @@ function mount(target: ScoVolume, path: string, subdir: string | undefined): str
   }
 }
 
-/** Sources, templates, and the output mount path a submission resolves against. */
+/** Sources, templates, the output mount path, and the commands the startup command prepares storage with. */
 export interface ResolveContext {
   sources: ReadonlyMap<string, ScoSource>
   templates: Readonly<Record<string, ScoJobTemplate>>
   outputMountPath: string
+  /** Command that runs git in the container. */
+  gitCommand: string
+  /** Command that runs pip in the container. */
+  pipCommand: string
+}
+
+/** Quote a value that the grammars above already restrict to characters without `'`. */
+function quote(value: string): string {
+  return `'${value}'`
+}
+
+/** Startup steps that reuse repositories and packages in the storage and download only what it lacks. */
+function storageSteps(
+  source: ScoStorageSource, repos: readonly ScoRepoPlan[], packages: readonly string[], context: ResolveContext,
+): string[] {
+  const steps: string[] = []
+  if (repos.length > 0) steps.push(`mkdir -p ${quote(`${source.mountPath}/${source.reposDir}`)}`)
+  for (const repo of repos) {
+    const target = quote(repo.path)
+    const partial = `${target}.partial-$$`
+    const clone = repo.ref === undefined
+      ? `${context.gitCommand} clone --depth 1 ${quote(repo.url)} ${partial}`
+      : `${context.gitCommand} clone ${quote(repo.url)} ${partial} && ${context.gitCommand} -C ${partial} checkout -q ${quote(repo.ref)}`
+    // A concurrent job may finish the same clone first; its copy is kept and this one discarded.
+    steps.push(`if [ ! -d ${target} ]; then rm -rf ${partial} && ${clone} && { [ -d ${target} ] && rm -rf ${partial} || mv ${partial} ${target}; }; fi`)
+  }
+  if (packages.length > 0) {
+    const dir = quote(`${source.mountPath}/${source.packagesDir}`)
+    const args = packages.flatMap(packageArgs).map(arg => arg === '-r' ? arg : quote(arg)).join(' ')
+    const offline = `${context.pipCommand} install --no-index --find-links ${dir} ${args}`
+    steps.push(`{ ${offline} || { mkdir -p ${dir} && ${context.pipCommand} download -d ${dir} ${args} && ${offline}; }; }`)
+  }
+  return steps
 }
 
 function lookup<K extends ScoSource['kind']>(context: ResolveContext, kind: K, name: string): Extract<ScoSource, { kind: K }> {
@@ -138,7 +224,10 @@ export function resolveSubmission(request: SubmitScoJobRequest, context: Resolve
   }
   const { description: _description, ...defaults } = template
   const { template: _template, extraArgs, name, displayName, queueId, workspace, dryRun, ...overrides } = request
-  const { code: codeName, ref, data = [], output: outputName, command, env: _env, image, ...resources } = { ...defaults, ...overrides }
+  const {
+    code: codeName, ref, data = [], output: outputName, storage: storageName, repos = [], packages = [],
+    command, env: _env, image, ...resources
+  } = { ...defaults, ...overrides }
   if (image === undefined) throw new Error('sco-submit: image is required from the request or the template')
   if (command === undefined) throw new Error('sco-submit: command is required from the request or the template')
   const mounts = new Map<string, string>()
@@ -150,6 +239,21 @@ export function resolveSubmission(request: SubmitScoJobRequest, context: Resolve
     add(source.mountPath, mount(source.volume, source.mountPath, volumeDir(subpath('path', source.path ?? ''))))
   }
   const steps: string[] = []
+  let storage: ScoStoragePlan | undefined
+  if (storageName !== undefined) {
+    const source = lookup(context, 'storage', storageName)
+    add(source.mountPath, mount(source.volume, source.mountPath, volumeDir(subpath('path', source.path ?? ''))))
+    const plans = repos.map((entry): ScoRepoPlan => {
+      const { dir, ...repo } = repoEntry(entry)
+      return { ...repo, path: `${source.mountPath}/${source.reposDir}/${dir}` }
+    })
+    const paths = new Set(plans.map(plan => plan.path))
+    if (paths.size < plans.length) throw new Error('sco-submit: two repositories clone into the same storage directory')
+    steps.push(...storageSteps(source, plans, packages, context))
+    storage = { name: storageName, repos: plans, packages: packages.map(entry => entry.trim()) }
+  } else if (repos.length > 0 || packages.length > 0) {
+    throw new Error('sco-submit: repos and packages need a storage source to look them up in and download them into; register the personal storage as a storage source first')
+  }
   let code: ScoResolvedSubmission['code']
   if (codeName !== undefined) {
     const source = lookup(context, 'code', codeName)
@@ -185,6 +289,7 @@ export function resolveSubmission(request: SubmitScoJobRequest, context: Resolve
     ...code === undefined ? {} : { code },
     data: [...data],
     ...outputName === undefined ? {} : { output: outputName },
+    ...storage === undefined ? {} : { storage },
   }
 }
 

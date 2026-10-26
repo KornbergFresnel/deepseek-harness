@@ -54,21 +54,35 @@ const RESOURCES = {
 } as const
 const SOURCE = {
   name: { type: 'string', required: true, description: 'Source name: lowercase letters, digits, and hyphens.' },
-  kind: { type: 'string', required: true, enum: ['data', 'code', 'output'], description: 'data: a dataset mounted at mountPath. code: snapshots under root/<ref>/, mounted at mountPath, where the command runs. output: job outputs under root/<job name>/, mounted at the fixed output path.' },
+  kind: { type: 'string', required: true, enum: ['data', 'code', 'output', 'storage'], description: 'data: a dataset mounted at mountPath. code: snapshots under root/<ref>/, mounted at mountPath, where the command runs. output: job outputs under root/<job name>/, mounted at the fixed output path. storage: the user\'s personal storage mounted at mountPath, keeping git clones under reposDir and pip package files under packagesDir for reuse across jobs.' },
   volumeType: { type: 'string', required: true, enum: ['afs', 'aoss'] },
   volumeId: { type: 'string', description: 'AFS volume UUID (afs).' },
   bucket: { type: 'string', description: 'AOSS bucket (aoss).' },
   endpoint: { type: 'string', description: 'AOSS endpoint host without port (aoss).' },
-  path: { type: 'string', description: 'Directory or prefix inside the volume (data); omit for the volume root.' },
+  path: { type: 'string', description: 'Directory or prefix inside the volume (data, storage); omit for the volume root.' },
   root: { type: 'string', description: 'Directory inside the volume holding one subdirectory per ref (code) or per job (output).' },
-  mountPath: { type: 'string', description: 'Absolute container path (data, code).' },
+  mountPath: { type: 'string', description: 'Absolute container path (data, code, storage).' },
   defaultRef: { type: 'string', description: 'Ref used when a submission names none (code).' },
   setup: { type: 'string', description: 'Shell command run in the code directory before the job command (code).' },
+  reposDir: { type: 'string', description: 'Directory under the mount holding one clone per repository, for example repos (storage).' },
+  packagesDir: { type: 'string', description: 'Directory under the mount holding pip package files, for example packages (storage).' },
   description: { type: 'string', description: 'What the source holds.' },
 } as const
 
+/** Storage source and the repositories and packages a job prepares from it. */
+const STORAGE = {
+  storage: { type: 'string', description: 'Storage source name; needed for repos and packages.' },
+  repos: { type: 'array', items: { type: 'string' }, description: 'Git repositories as <clone URL> or <clone URL>#<branch, tag, or commit>.' },
+  packages: { type: 'array', items: { type: 'string' }, description: 'pip requirement specifiers such as torch==2.3.0, or -r <absolute path to a requirements file>.' },
+} as const
+
 /** Fields each source kind accepts beyond name, kind, volume, and description. */
-const SOURCE_FIELDS = { data: ['path', 'mountPath'], code: ['root', 'mountPath', 'defaultRef', 'setup'], output: ['root'] } as const
+const SOURCE_FIELDS = {
+  data: ['path', 'mountPath'],
+  code: ['root', 'mountPath', 'defaultRef', 'setup'],
+  output: ['root'],
+  storage: ['path', 'mountPath', 'reposDir', 'packagesDir'],
+} as const
 
 interface SourceArgs {
   kind: ScoSource['kind']
@@ -81,10 +95,12 @@ interface SourceArgs {
   mountPath?: string
   defaultRef?: string
   setup?: string
+  reposDir?: string
+  packagesDir?: string
   description?: string
 }
 
-function need(args: SourceArgs, key: 'volumeId' | 'bucket' | 'endpoint' | 'root' | 'mountPath' | 'defaultRef'): string {
+function need(args: SourceArgs, key: 'volumeId' | 'bucket' | 'endpoint' | 'root' | 'mountPath' | 'defaultRef' | 'reposDir' | 'packagesDir'): string {
   const value = args[key]
   if (value === undefined) throw new Error(`${key} is required for this source`)
   return value
@@ -93,7 +109,7 @@ function need(args: SourceArgs, key: 'volumeId' | 'bucket' | 'endpoint' | 'root'
 /** Build a typed source from flat tool arguments, rejecting fields the kind does not use. */
 function sourceOf(args: SourceArgs): ScoSource {
   const accepted: readonly string[] = SOURCE_FIELDS[args.kind]
-  for (const key of ['path', 'root', 'mountPath', 'defaultRef', 'setup'] as const) {
+  for (const key of ['path', 'root', 'mountPath', 'defaultRef', 'setup', 'reposDir', 'packagesDir'] as const) {
     if (args[key] !== undefined && !accepted.includes(key)) throw new Error(`${key} does not apply to ${args.kind} sources`)
   }
   const volume: ScoVolume = args.volumeType === 'afs'
@@ -110,6 +126,11 @@ function sourceOf(args: SourceArgs): ScoSource {
       }
     case 'output':
       return { kind: 'output', volume, root: need(args, 'root'), ...description }
+    case 'storage':
+      return {
+        kind: 'storage', volume, mountPath: need(args, 'mountPath'), reposDir: need(args, 'reposDir'), packagesDir: need(args, 'packagesDir'),
+        ...args.path === undefined ? {} : { path: args.path }, ...description,
+      }
   }
 }
 
@@ -340,7 +361,7 @@ export function apply(ctx: Context, config: Config): void {
 function registerSubmissionTools(ctx: Context): void {
   ctx.tools.register(defineTool({
     name: 'sco_sources_list',
-    description: 'List registered data, code, and output sources, configured job templates, configurations the user saved from earlier forms, and the fixed container path where every job mounts its output directory. Call before sco_job_submit to pick names, and before sco_config_form to find a saved configuration that fits.',
+    description: 'List registered data, code, output, and personal storage sources, configured job templates, configurations the user saved from earlier forms, and the fixed container path where every job mounts its output directory. Call before sco_job_submit to pick names, and before sco_config_form to find a saved configuration that fits.',
     parameters: {},
     output: { schema: { type: 'json' }, render: (_args, value) => json(value) },
     async execute() {
@@ -355,7 +376,7 @@ function registerSubmissionTools(ctx: Context): void {
   }))
 
   for (const [name, verb, description] of [
-    ['sco_source_add', 'add', 'Register a new data, code, or output source location on cluster storage. Ask the user for the volume and directory, offering volumes from sco_volumes_list; never guess them.'],
+    ['sco_source_add', 'add', 'Register a new data, code, output, or personal storage source location on cluster storage. Ask the user for the volume and directory, offering volumes from sco_volumes_list; never guess them.'],
     ['sco_source_update', 'update', 'Replace every field of a registered source.'],
   ] as const) {
     ctx.tools.register(defineTool({
@@ -397,7 +418,7 @@ function registerSubmissionTools(ctx: Context): void {
 
   ctx.tools.register(defineTool({
     name: 'sco_job_submit',
-    description: 'Submit an SSP job composed from a template and registered sources: data sources mount at their paths, the code source mounts the chosen ref directory under its root and the command runs there after its setup, and the output source mounts a directory named after the job under its root at the fixed output path. Request fields override the template. Run with dryRun first and show the user the resolved flags; a real submission asks the user. Pick machineType and queueId from sco_resource_options.',
+    description: 'Submit an SSP job composed from a template and registered sources: data sources mount at their paths, the code source mounts the chosen ref directory under its root and the command runs there after its setup, and the output source mounts a directory named after the job under its root at the fixed output path. List every git repository and pip package the job needs that the image lacks in repos and packages, with the user\'s storage source from sco_sources_list in storage, instead of cloning or installing them in command: the job uses the copies already in the storage, and downloads only what is missing into the storage, before the command runs. When sco_sources_list has no storage source, ask the user where their personal storage is and register it with sco_source_add, or open sco_config_form, where the user can register it. Each repository is cloned into the storage\'s reposDir directory under its own name, followed by @ and the ref when one is given; the result lists the paths under storage. Request fields override the template. Run with dryRun first and show the user the resolved flags; a real submission asks the user. Pick machineType and queueId from sco_resource_options.',
     parameters: {
       name: { type: 'string', required: true, description: 'New job name: job- prefix, lowercase letters, digits, and hyphens, at most 32 characters.' },
       template: { type: 'string', description: 'Template name from sco_sources_list.' },
@@ -407,6 +428,7 @@ function registerSubmissionTools(ctx: Context): void {
       ref: { type: 'string', description: 'Code ref directory. Omit for the source default.' },
       data: { type: 'array', items: { type: 'string' }, description: 'Data source names.' },
       output: { type: 'string', description: 'Output source name.' },
+      ...STORAGE,
       command: { type: 'string', description: 'Job command; overrides the template.' },
       extraArgs: { type: 'string', description: 'Arguments appended to the command.' },
       env: ENV,
@@ -423,7 +445,12 @@ function registerSubmissionTools(ctx: Context): void {
           {
             type: 'object',
             additionalProperties: false,
-            properties: { kind: { type: 'string', const: 'dry-run', required: true }, resolved: { type: 'json', required: true }, job: { type: 'json', required: true } },
+            properties: {
+              kind: { type: 'string', const: 'dry-run', required: true },
+              resolved: { type: 'json', required: true },
+              job: { type: 'json', required: true },
+              storage: { type: 'json' },
+            },
           },
           {
             type: 'object',
@@ -433,6 +460,7 @@ function registerSubmissionTools(ctx: Context): void {
               resolved: { type: 'json', required: true },
               name: { type: 'string', required: true },
               output: { type: 'string', required: true },
+              storage: { type: 'json' },
             },
           },
         ],
@@ -449,7 +477,7 @@ function registerSubmissionTools(ctx: Context): void {
 
   ctx.tools.register(defineTool({
     name: 'sco_config_form',
-    description: 'Open an interactive form in the chat where the user sets up an SSP training job or a cloud development machine: image, mounted data, code, and output sources, workspace, queue, machine type, pods, GPUs, CPU, memory, priority, and command. Use it instead of asking for these settings in text. Prefill initial with everything the user already said. The form lets the user load a configuration saved earlier; pass suggested to preselect a saved configuration from sco_sources_list that fits the request. Waits until the user confirms or cancels, then returns the confirmed settings, the configuration loaded, and the name the user saved them under. Submit a confirmed job with sco_job_submit using the returned fields (dryRun first). No sco command creates development machines; report confirmed development machine settings to the user.',
+    description: 'Open an interactive form in the chat where the user sets up an SSP training job or a cloud development machine: image, mounted data, code, and output sources, the storage source with the repositories and packages to reuse from it, workspace, queue, machine type, pods, GPUs, CPU, memory, priority, and command. Use it instead of asking for these settings in text. Prefill initial with everything the user already said. The user can register a personal storage source from inside the form; the confirmed storage field names it. The form lets the user load a configuration saved earlier; pass suggested to preselect a saved configuration from sco_sources_list that fits the request. Waits until the user confirms or cancels, then returns the confirmed settings, the configuration loaded, and the name the user saved them under. Submit a confirmed job with sco_job_submit using the returned fields (dryRun first). No sco command creates development machines; report confirmed development machine settings to the user.',
     parameters: {
       kind: { type: 'string', required: true, enum: ['job', 'devmachine'], description: 'job: an SSP training job. devmachine: a cloud development machine.' },
       title: { type: 'string', description: 'Short heading for the form, for example what the job trains.' },
@@ -465,6 +493,7 @@ function registerSubmissionTools(ctx: Context): void {
           ref: { type: 'string', description: 'Code ref directory.' },
           data: { type: 'array', items: { type: 'string' }, description: 'Data source names.' },
           output: { type: 'string', description: 'Output source name.' },
+          ...STORAGE,
           command: { type: 'string', description: 'Startup command.' },
           env: ENV,
           ...RESOURCES,

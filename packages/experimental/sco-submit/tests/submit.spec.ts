@@ -1,6 +1,8 @@
-import { mkdtemp, realpath, rm } from 'node:fs/promises'
+import { execFile } from 'node:child_process'
+import { chmod, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { promisify } from 'node:util'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import ScoGateway from '@deepseek-ai/dsh-experimental-sco'
@@ -11,8 +13,8 @@ import * as StorageDomain from '@deepseek-ai/dsh-storage-domain'
 import * as StorageJson from '@deepseek-ai/dsh-storage-json'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import ScoSubmit, { workloadSpec } from '../src/index.ts'
-import type { Config, ScoCodeSource, ScoJobSubmitted, ScoJobTemplate, ScoSource } from '../src/index.ts'
-import { machineTypes, mentions, queueIds, resolveSubmission, validSource } from '../src/resolve.ts'
+import type { Config, ScoCodeSource, ScoJobSubmitted, ScoJobTemplate, ScoSource, ScoStorageSource } from '../src/index.ts'
+import { machineTypes, mentions, packageArgs, queueIds, repoEntry, resolveSubmission, validSource } from '../src/resolve.ts'
 import { fakeSco } from '../../sco/tests/fake-sco.ts'
 import type { FakeSco } from '../../sco/tests/fake-sco.ts'
 
@@ -39,6 +41,8 @@ const TEMPLATES: Record<string, ScoJobTemplate> = {
     env: { WANDB_MODE: 'offline', SEED: '1' },
     gpuCount: 8,
     machineType: 'h1ls.rp.k60a',
+    repos: [],
+    packages: [],
   },
 }
 
@@ -115,6 +119,9 @@ describe('source registry', () => {
       [{ templates: { ok: { code: 'Code!' } } }, 'source name in template "ok" "Code!"'],
       [{ templates: { ok: { data: ['ok', 'x y'] } } }, 'source name in template "ok" "x y"'],
       [{ outputMountPath: 'outputs' }, 'outputMountPath "outputs"'],
+      [{ templates: { ok: { storage: 'My Storage' } } }, 'source name in template "ok" "My Storage"'],
+      [{ templates: { ok: { repos: ['ftp://host/x'] } } }, 'repository "ftp://host/x"'],
+      [{ templates: { ok: { packages: ['torch; python_version<"3.9"'] } } }, 'package "torch; python_version<"3.9""'],
     ] as [Config, string][]) {
       await expect(boot({ submit })).rejects.toThrow(text)
     }
@@ -134,6 +141,8 @@ describe('submission expansion', () => {
     ]),
     templates: TEMPLATES,
     outputMountPath: '/outputs',
+    gitCommand: 'git',
+    pipCommand: 'pip',
   }
 
   it('merges the template, mounts sources, and runs the command in the code directory', () => {
@@ -366,6 +375,11 @@ describe('saved configurations and configuration forms', () => {
     expect(() => workloadSpec({ podCount: 0 })).toThrow('invalid workload settings')
     expect(() => workloadSpec({ queueId: 'gpu-a' })).toThrow('queueId "gpu-a" must be a full queue resource id')
     expect(() => workloadSpec({ code: 'Bad_Name' })).toThrow('source name in workload settings "Bad_Name"')
+    expect(workloadSpec({ storage: ' personal ', repos: [' https://github.com/org/rlh.git ', ''], packages: ['torch==2.3.0'] }))
+      .toEqual({ storage: 'personal', repos: ['https://github.com/org/rlh.git'], packages: ['torch==2.3.0'] })
+    expect(() => workloadSpec({ storage: 'Bad_Name' })).toThrow('source name in workload settings "Bad_Name"')
+    expect(() => workloadSpec({ repos: ['org/rlh'] })).toThrow('repository "org/rlh"')
+    expect(() => workloadSpec({ packages: ['--index-url=x'] })).toThrow('package "--index-url=x"')
   })
 
   it('saves, replaces, lists, and deletes configurations that survive a restart', async () => {
@@ -444,5 +458,125 @@ describe('saved configurations and configuration forms', () => {
     await vi.waitFor(async () => { expect(await nextForms(ctx)).toHaveLength(1) })
     await submit.dispose()
     await failed
+  })
+})
+
+const STORAGE: ScoStorageSource = {
+  kind: 'storage', volume: { type: 'afs', id: 'vol-home' }, path: 'users/ethan', mountPath: '/personal', reposDir: 'repos', packagesDir: 'packages/pip',
+}
+
+describe('personal storage', () => {
+  const context = (storage: ScoStorageSource = STORAGE, commands = { gitCommand: 'git', pipCommand: 'pip' }) => ({
+    sources: new Map<string, ScoSource>([['home', storage], ['rlh', CODE], ['motion', DATA]]),
+    templates: {},
+    outputMountPath: '/outputs',
+    ...commands,
+  })
+
+  it('validates storage sources and normalizes their directories', () => {
+    expect(validSource({ ...STORAGE, path: '/users/ethan/', reposDir: '/repos/', packagesDir: 'packages/pip/' })).toEqual(STORAGE)
+    const { path: _path, ...root } = STORAGE
+    expect(validSource({ ...STORAGE, path: '/' })).toEqual(root)
+    expect(validSource(root)).toEqual(root)
+    expect(() => validSource({ ...STORAGE, reposDir: '/' })).toThrow('reposDir must name a directory under the storage mount')
+    expect(() => validSource({ ...STORAGE, packagesDir: '../x' })).toThrow('packagesDir "../x"')
+    expect(() => validSource({ ...STORAGE, mountPath: 'personal' })).toThrow('mountPath "personal"')
+  })
+
+  it('reads repository and package entries', () => {
+    expect(repoEntry(' https://github.com/org/rlightning-humanoid.git ')).toEqual({ url: 'https://github.com/org/rlightning-humanoid.git', dir: 'rlightning-humanoid' })
+    expect(repoEntry('git@github.com:org/rsl_rl.git#feature/g1')).toEqual({ url: 'git@github.com:org/rsl_rl.git', ref: 'feature/g1', dir: 'rsl_rl@feature_g1' })
+    expect(repoEntry('ssh://git@host:2222/team/tool#v1.2')).toEqual({ url: 'ssh://git@host:2222/team/tool', ref: 'v1.2', dir: 'tool@v1.2' })
+    expect(repoEntry('git@host:solo.git')).toEqual({ url: 'git@host:solo.git', dir: 'solo' })
+    expect(() => repoEntry('https://host/x\';rm -rf /\'')).toThrow('repository "https://host/x\';rm -rf /\'"')
+    expect(() => repoEntry('https://host/x#-bad')).toThrow('repository ref "-bad"')
+    expect(() => repoEntry('https://host/x#a#b')).toThrow('repository "https://host/x#a#b" has more than one "#"')
+    expect(() => repoEntry('https://host/org/')).toThrow('repository name ""')
+    expect(packageArgs(' numpy>=1.26,<2 ')).toEqual(['numpy>=1.26,<2'])
+    expect(packageArgs('rsl-rl-lib[extra]==2.3.1')).toEqual(['rsl-rl-lib[extra]==2.3.1'])
+    expect(packageArgs('-r /personal/repos/rlh/requirements.txt')).toEqual(['-r', '/personal/repos/rlh/requirements.txt'])
+    expect(() => packageArgs('-r requirements.txt')).toThrow('requirements file "requirements.txt"')
+    expect(() => packageArgs('torch==2.3 numpy')).toThrow('package "torch==2.3 numpy"')
+  })
+
+  it('mounts the storage and prepares repositories and packages before the code directory', () => {
+    const resolved = resolveSubmission({
+      name: 'job-g1', image: 'img', command: 'python train.py', code: 'rlh', storage: 'home',
+      repos: ['https://github.com/org/rsl_rl.git', 'git@github.com:org/tools.git#v2'], packages: ['torch==2.3.0', '-r /personal/repos/rsl_rl/requirements.txt'],
+    }, context())
+    expect(resolved.request.volumeMounts).toEqual(['PV_AFS:vol-home:/personal:/users/ethan', 'PV_AFS:vol-code:/workspace/code:/code/rlh/main'])
+    const steps = (resolved.request.args ?? '').split(' && ')
+    expect(steps[0]).toBe("mkdir -p '/personal/repos'")
+    expect(resolved.request.args).toContain("if [ ! -d '/personal/repos/rsl_rl' ]; then rm -rf '/personal/repos/rsl_rl'.partial-$$ && git clone --depth 1 'https://github.com/org/rsl_rl.git' '/personal/repos/rsl_rl'.partial-$$")
+    expect(resolved.request.args).toContain("git clone 'git@github.com:org/tools.git' '/personal/repos/tools@v2'.partial-$$ && git -C '/personal/repos/tools@v2'.partial-$$ checkout -q 'v2'")
+    expect(resolved.request.args).toContain("{ pip install --no-index --find-links '/personal/packages/pip' 'torch==2.3.0' -r '/personal/repos/rsl_rl/requirements.txt' || { mkdir -p '/personal/packages/pip' && pip download -d '/personal/packages/pip' 'torch==2.3.0' -r '/personal/repos/rsl_rl/requirements.txt' && ")
+    expect(resolved.request.args).toMatch(/; }; } && cd \/workspace\/code && pip install -e \. --no-deps && python train\.py$/)
+    expect(resolved.storage).toEqual({
+      name: 'home',
+      repos: [
+        { url: 'https://github.com/org/rsl_rl.git', path: '/personal/repos/rsl_rl' },
+        { url: 'git@github.com:org/tools.git', ref: 'v2', path: '/personal/repos/tools@v2' },
+      ],
+      packages: ['torch==2.3.0', '-r /personal/repos/rsl_rl/requirements.txt'],
+    })
+    const mountOnly = resolveSubmission({ name: 'job-x', image: 'img', command: 'ls /personal', storage: 'home', packages: ['numpy'] }, context())
+    expect(mountOnly.request.args?.startsWith('{ pip install')).toBe(true)
+    expect(resolveSubmission({ name: 'job-x', image: 'img', command: 'ls', storage: 'home' }, context()).request.args).toBe('ls')
+  })
+
+  it('rejects storage requests that cannot be prepared', () => {
+    const base = { name: 'job-x', image: 'img', command: 'run' }
+    expect(() => resolveSubmission({ ...base, repos: ['https://h/x'] }, context())).toThrow('repos and packages need a storage source')
+    expect(() => resolveSubmission({ ...base, packages: ['numpy'] }, context())).toThrow('repos and packages need a storage source')
+    expect(() => resolveSubmission({ ...base, storage: 'motion' }, context())).toThrow('source "motion" is a data source, not a storage source')
+    expect(() => resolveSubmission({ ...base, storage: 'home', repos: ['https://a/x', 'https://b/x.git'] }, context()))
+      .toThrow('two repositories clone into the same storage directory')
+    expect(() => resolveSubmission({ ...base, storage: 'home', data: ['motion'] }, context({ ...STORAGE, mountPath: '/data/motion' })))
+      .toThrow('two sources mount at /data/motion')
+  })
+
+  it('runs the startup steps: downloads only what the storage lacks, then reuses it', async () => {
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'dsh-storage-')))
+    cleanup.push(root)
+    const log = join(root, 'calls.log')
+    // Fake git creates the clone directory; fake pip installs only once a package file was downloaded.
+    const git = join(root, 'git')
+    await writeFile(git, `#!/bin/sh\necho "git $*" >> '${log}'\nif [ "$1" = clone ]; then for a; do t="$a"; done; mkdir -p "$t"; fi\n`)
+    const pip = join(root, 'pip')
+    await writeFile(pip, `#!/bin/sh\necho "pip $*" >> '${log}'\ncase "$1" in\n  install) for a; do d="$a"; done; ls ${root}/home/packages/*.whl >/dev/null 2>&1 ;;\n  download) touch ${root}/home/packages/torch.whl ;;\nesac\n`)
+    await chmod(git, 0o755)
+    await chmod(pip, 0o755)
+    const storage: ScoStorageSource = { kind: 'storage', volume: { type: 'afs', id: 'v' }, mountPath: `${root}/home`, reposDir: 'repos', packagesDir: 'packages' }
+    const { request } = resolveSubmission({
+      name: 'job-x', image: 'img', command: 'echo done', storage: 'home', repos: ['https://github.com/org/rsl_rl.git', 'https://github.com/org/tools#v2'], packages: ['torch==2.3.0'],
+    }, context(storage, { gitCommand: git, pipCommand: pip }))
+    const run = promisify(execFile)
+    const first = await run('sh', ['-c', request.args ?? ''])
+    expect(first.stdout).toBe('done\n')
+    const calls = (await readFile(log, 'utf8')).trim().split('\n')
+    expect(calls.map(line => line.split(' ').slice(0, 3).join(' '))).toEqual([
+      'git clone --depth', 'git clone https://github.com/org/tools', 'git -C ' + `${root}/home/repos/tools@v2.partial-${calls[2]?.split('.partial-')[1]?.split(' ')[0] ?? ''}`,
+      'pip install --no-index', 'pip download -d', 'pip install --no-index',
+    ])
+    await writeFile(log, '')
+    expect((await run('sh', ['-c', request.args ?? ''])).stdout).toBe('done\n')
+    expect((await readFile(log, 'utf8')).trim().split('\n')).toEqual([`pip install --no-index --find-links ${root}/home/packages torch==2.3.0`])
+  })
+
+  it('submits with storage, reports the plan, and names the storage in the event', async () => {
+    const { ctx, fake } = await boot({ submit: { gitCommand: '/opt/git', pipCommand: 'python3 -m pip' } })
+    await ctx.scoSubmit.addSource('home', STORAGE)
+    const submitted: ScoJobSubmitted[] = []
+    ctx.on('sco/job-submitted', (event) => { submitted.push(event) })
+    const plan = { name: 'home', repos: [{ url: 'https://h/org/x', path: '/personal/repos/x' }], packages: ['numpy'] }
+    const request = { name: 'job-s', image: 'img', command: 'run', storage: 'home', repos: ['https://h/org/x'], packages: ['numpy'] }
+    expect(await ctx.scoSubmit.submit({ ...request, dryRun: true })).toMatchObject({ kind: 'dry-run', storage: plan })
+    const created = await ctx.scoSubmit.submit(request)
+    expect(created).toMatchObject({ kind: 'created', storage: plan })
+    expect(created.resolved.args).toContain('/opt/git clone --depth 1')
+    expect(created.resolved.args).toContain('python3 -m pip install --no-index')
+    expect(submitted).toEqual([{ name: 'job-s', workspace: 'team-a', data: [], storage: 'home' }])
+    expect((await fake.calls()).at(-1)).toContain('--volume-mount=PV_AFS:vol-home:/personal:/users/ethan')
+    await expect(boot({ submit: { pipCommand: '' } })).rejects.toThrow()
   })
 })
