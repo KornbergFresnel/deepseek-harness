@@ -34,7 +34,7 @@ export type ConfigPageProps = PropsRuntime<'main'> & InjectFace<ConfigPageInject
 type Translate = ConfigPageProps['t']
 type Kind = ScoSource['kind']
 
-const KINDS: readonly Kind[] = ['code', 'data', 'output']
+const KINDS: readonly Kind[] = ['code', 'data', 'output', 'storage']
 
 /** Editable form fields; every value is a string so inputs stay controlled. */
 type Draft = {
@@ -49,12 +49,14 @@ type Draft = {
   mountPath: string
   defaultRef: string
   setup: string
+  reposDir: string
+  packagesDir: string
   description: string
 }
 
 const EMPTY: Draft = {
   name: '', kind: 'code', volumeType: 'afs', volumeId: '', bucket: '', endpoint: '',
-  path: '', root: '', mountPath: '', defaultRef: 'main', setup: '', description: '',
+  path: '', root: '', mountPath: '', defaultRef: 'main', setup: '', reposDir: 'repos', packagesDir: 'packages', description: '',
 }
 
 /**
@@ -72,6 +74,8 @@ export function draftOf(name: string, source: ScoSource): Draft {
     case 'data': return { ...common, path: source.path ?? '', mountPath: source.mountPath }
     case 'code': return { ...common, root: source.root, mountPath: source.mountPath, defaultRef: source.defaultRef, setup: source.setup ?? '' }
     case 'output': return { ...common, root: source.root }
+    case 'storage':
+      return { ...common, path: source.path ?? '', mountPath: source.mountPath, reposDir: source.reposDir, packagesDir: source.packagesDir }
   }
 }
 
@@ -96,6 +100,11 @@ export function sourceOf(draft: Draft): ScoSource {
         ...optional('setup', draft.setup), ...description,
       }
     case 'output': return { kind: 'output', volume, root: trim(draft.root), ...description }
+    case 'storage':
+      return {
+        kind: 'storage', volume, mountPath: trim(draft.mountPath), reposDir: trim(draft.reposDir), packagesDir: trim(draft.packagesDir),
+        ...optional('path', draft.path), ...description,
+      }
   }
 }
 
@@ -147,6 +156,12 @@ function sourceFacts(source: ScoSource, t: Translate): [string, string][] {
       break
     case 'output':
       facts.push([t('source.root'), dir(source.root)])
+      break
+    case 'storage':
+      facts.push(
+        [t('source.path'), source.path === undefined ? t('source.volumeRoot') : dir(source.path)], [t('source.mountPath'), source.mountPath],
+        [t('source.reposDir'), `${source.mountPath}/${source.reposDir}`], [t('source.packagesDir'), `${source.mountPath}/${source.packagesDir}`],
+      )
       break
   }
   return facts
@@ -219,10 +234,11 @@ function SourceForm({ initial, editing, volumes, save, cancel, t }: {
           </Field>
         )
         : <>{text('bucket', t('field.bucket'))}{text('endpoint', t('field.endpoint'))}</>}
-      {draft.kind === 'data' && text('path', t('field.path'))}
-      {draft.kind !== 'data' && text('root', t(draft.kind === 'code' ? 'field.rootCode' : 'field.rootOutput'))}
-      {draft.kind !== 'output' && text('mountPath', t('field.mountPath'))}
+      {(draft.kind === 'data' || draft.kind === 'storage') && text('path', t('field.path'))}
+      {(draft.kind === 'code' || draft.kind === 'output') && text('root', t(draft.kind === 'code' ? 'field.rootCode' : 'field.rootOutput'))}
+      {draft.kind !== 'output' && text('mountPath', t(draft.kind === 'storage' ? 'field.mountPathStorage' : 'field.mountPath'))}
       {draft.kind === 'code' && <>{text('defaultRef', t('field.defaultRef'))}{text('setup', t('field.setup'))}</>}
+      {draft.kind === 'storage' && <>{text('reposDir', t('field.reposDir'))}{text('packagesDir', t('field.packagesDir'))}</>}
       {text('description', t('field.description'))}
       {volumes.result?.ok === false && <p className={css.notice}>{t('action.failed', { message: volumes.result.message })}</p>}
       {failure !== null && <p className={css.notice} role="alert">{t('action.failed', { message: failure })}</p>}

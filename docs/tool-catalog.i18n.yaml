@@ -312,8 +312,8 @@
   en: 6d245db39187b677
   zh: 6d245db39187b677
 /tool-schema-catalog/deepseek-ai-dsh-experimental-tool-sco/sco-config-form:
-  en: 672b4e36da46de93
-  zh: b641bca846397af2
+  en: 0e9aa950972924c3
+  zh: b5a3068db3ee1862
 /tool-schema-catalog/deepseek-ai-dsh-experimental-tool-sco/sco-job-create:
   en: 5b8410212bc8356d
   zh: fb2deb24155c0e28
@@ -330,8 +330,8 @@
   en: f88fe5c3bb6137f1
   zh: f5c5c102d7963fc8
 /tool-schema-catalog/deepseek-ai-dsh-experimental-tool-sco/sco-job-submit:
-  en: b38dfff3dde7d74f
-  zh: a87b730df34449a9
+  en: a33836d3a04e86e2
+  zh: f65b4636d9207f14
 /tool-schema-catalog/deepseek-ai-dsh-experimental-tool-sco/sco-job-watch:
   en: 0e4d9da8d8c4154d
   zh: e776fa7ba0a1c8a4
@@ -342,8 +342,8 @@
   en: 5caf338e1cebe56f
   zh: 39ed209a62ab8209
 /tool-schema-catalog/deepseek-ai-dsh-experimental-tool-sco/sco-source-add:
-  en: 158bc090eafa3ea2
-  zh: f44a00f76da3b1b9
+  en: 612e77704e947f95
+  zh: 83dc3f0de18d04dc
 /tool-schema-catalog/deepseek-ai-dsh-experimental-tool-sco/sco-source-remove:
   en: 72a4bef0ca436d6a
   zh: 9008f33b7d1acee2
@@ -351,8 +351,8 @@
   en: 78721469bcbc6242
   zh: f699d10df4bbfebc
 /tool-schema-catalog/deepseek-ai-dsh-experimental-tool-sco/sco-sources-list:
-  en: 1ed98223e4920799
-  zh: 71c8cd0233801d62
+  en: baa1c22f04ad73fb
+  zh: cc90f28829d74374
 /tool-schema-catalog/deepseek-ai-dsh-experimental-tool-sco/sco-volume-quota:
   en: a93f62da5207aa58
   zh: 28664511f28967b8

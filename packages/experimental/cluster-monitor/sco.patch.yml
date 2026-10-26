@@ -26,6 +26,13 @@
         #     data: [motion-lafan]
         #     output: wbt-outputs
         #     command: python scripts/rsl_rl/train.py --task Tracking-Flat-G1 --headless
+        #     # 个人存储（在“集群配置”页面登记为“个人存储”）里找代码库和 pip 包，找不到才下载并存回去
+        #     storage: my-storage
+        #     repos: ['https://github.com/leggedrobotics/rsl_rl.git#v2.3.1']
+        #     packages: ['wandb==0.19.1']
+        # 任务容器里运行 pip 和 git 的命令（可选）
+        # pipCommand: python -m pip
+        # gitCommand: git
     - id: tool-sco
       name: '@deepseek-ai/dsh-experimental-tool-sco'
     # 定时用 sco 轮询关注的任务，解析训练曲线和日志；agent 提交的任务会自动关注

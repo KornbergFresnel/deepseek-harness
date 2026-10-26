@@ -1,5 +1,5 @@
 ---
-description: "按登记的数据、代码和输出位置以及配置的模板组合 SenseCore SSP 任务，并缓存队列选项。"
+description: "按登记的数据、代码、输出和个人存储位置以及配置的模板组合 SenseCore SSP 任务，并缓存队列选项。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-按名字而不是卷 UUID 提交 SSP 训练任务。本服务持久保存集群存储上数据、代码和输出位置的登记表，把配置的任务模板展开为 [sco 网关](../sco/README.zh.md)的创建参数，并缓存工作空间可用的队列和机型，只在缺少缓存或资源相关失败后才重新查询。
+按名字而不是卷 UUID 提交 SSP 训练任务。本服务持久保存集群存储上数据、代码、输出和个人存储位置的登记表，复用个人存储里保存的代码库和安装包，把配置的任务模板展开为 [sco 网关](../sco/README.zh.md)的创建参数，并缓存工作空间可用的队列和机型，只在缺少缓存或资源相关失败后才重新查询。
 
 ## 目录
 
@@ -47,10 +47,14 @@ kind: "package-reference"
 |---|---|---|
 | `templates` | `{}` | 按名字配置的任务模板：镜像、代码、数据、输出、命令、环境变量和资源参数 |
 | `outputMountPath` | `/outputs` | 每个任务在容器内挂载输出目录的路径 |
+| `gitCommand` | `git` | 在任务容器里克隆个人存储中缺少的代码库的命令 |
+| `pipCommand` | `python -m pip` | 在任务容器里安装和下载安装包的命令 |
 
 数据源在运行时登记，不写在配置里。`data` 数据源把卷里的目录（AFS）或前缀（AOSS）挂载到它的 `mountPath`。`code` 代码库在 `root` 下按 ref 各存一个快照目录，并把 `/<root>/<ref>` 挂载到它的 `mountPath`；启动命令先进入该目录并执行 `setup`，再运行任务命令。`output` 输出位置把 `/<root>/<任务名>` 挂载到 `outputMountPath`，每个任务写各自的目录。数据源的 `path` 和代码库、输出位置的 `root` 是卷内目录，写不写前导 `/` 都可以：去掉首尾空白和首尾 `/` 后保存，挂载时补上 CLI 要求的前导 `/`；空值或 `/` 表示卷根。目录里含字母、数字、`.`、`_`、`-`、`/` 以外的字符，或含 `..`、`//`、空格时，登记失败。`ctx.scoSubmit` 提供 `sources()`、`addSource(name, source)`、`updateSource(name, source)`、`removeSource(name)`、`listTemplates()`、`outputPath`、`resourceOptions(request?)`、`resolve(request)`、`submit(request, signal?, origin?)`、`configs()` 和 `askForm(request, signal)`。
 
-`resolve` 把指定模板和请求字段合并，请求字段优先；`env` 按键合并。模板里的数据源名在此时解析，所以删除的数据源会让下一次引用它的提交失败。`submit` 在有缓存时用工作空间的缓存选项校验 `machineType`，执行 `createJob`，真正创建后发出带模板、代码 ref、数据和输出名的 `sco/job-submitted` 事件。CLI 拒绝创建且错误信息提到机型、规格、队列、配额或 GPU 时，`submit` 会先刷新缓存选项再抛出错误，并在错误里说明已刷新。
+`storage` 是用户的个人存储：它把卷里的目录挂载到 `mountPath`，在挂载路径下的 `reposDir` 中为每个代码库保存一份 git 克隆，在 `packagesDir` 中保存 pip 安装包文件。设置了 `storage` 的提交或模板会挂载它，并把 `repos` 和 `packages` 变成在代码目录步骤之前执行的启动步骤。代码库条目是克隆地址，可以在后面加 `#<分支、标签或提交>`；它位于 `<mountPath>/<reposDir>/<repo>`，带 ref 时为 `<repo>@<ref>`（ref 中的 `/` 写作 `_`），只有该目录不存在时才克隆到那里（先克隆到临时目录，失败或并发的克隆不会留下不完整的副本）。安装包条目是 pip 依赖说明或 `-r <绝对路径>`；先用 `--no-index --find-links <packagesDir>` 安装，失败时才下载到 `packagesDir` 再从那里安装。之后需要同一代码库或安装包的任务直接使用存储里的副本，不需要访问网络。只设置 `repos` 或 `packages` 而没有 `storage` 会失败。提交结果在 `storage` 下列出存储名、每个代码库在容器内的路径和安装包。
+
+`resolve` 把指定模板和请求字段合并，请求字段优先；`env` 按键合并。模板里的数据源名在此时解析，所以删除的数据源会让下一次引用它的提交失败。`submit` 在有缓存时用工作空间的缓存选项校验 `machineType`，执行 `createJob`，真正创建后发出带模板、代码 ref、数据、输出和存储名的 `sco/job-submitted` 事件。CLI 拒绝创建且错误信息提到机型、规格、队列、配额或 GPU 时，`submit` 会先刷新缓存选项再抛出错误，并在错误里说明已刷新。
 
 `resourceOptions` 执行 `sco ssp workspaces list-queues`，保留列表中 `id` 为队列资源 id 的每个队列对象，按 sco profile 和工作空间保存结果；设置 `refresh` 之前一直返回保存的副本。它需要从请求或网关配置得到工作空间；列表里找不到任何队列 id 时失败，并在错误里附上列表片段。
 
@@ -71,7 +75,7 @@ kind: "package-reference"
 | 源文件 | 职责 |
 |---|---|
 | [`src/index.ts`](src/index.ts) | 配置校验、`sco_submit` 存储域、选项缓存、提交、事件、已保存配置、配置表单和 `clusterConfig` Remote |
-| [`src/resolve.ts`](src/resolve.ts) | 数据源校验、模板合并、挂载字符串、启动命令和无类型 JSON 扫描 |
+| [`src/resolve.ts`](src/resolve.ts) | 数据源校验、模板合并、挂载字符串、存储步骤、启动命令和无类型 JSON 扫描 |
 | [`src/types.ts`](src/types.ts) | 数据源、模板、选项、提交和配置概览记录 |
 
 数据源和选项保存在 `sco_submit` 存储域（`sources`、`resource_options`、`defaults` 和 `configs` 四张表），无论存储域设施路由到哪个后端，重启后都保留。挂载路径和卷内子路径只允许字母、数字、`.`、`_`、`-` 和 `/`，且不含 `..`，这样每个挂载都是单个 `--volume-mount` 参数，启动命令里的路径也无需加引号。队列 id 通过在列表中查找形如 `/subscriptions/…/clusters/<cluster>/queues/<queue>` 的字符串得到，机型按队列对象中任意位置的完全相等字符串匹配，因为 CLI 没有文档说明这两种 JSON 结构；概览从 `machine_type`（如 `properties.machine_type_allocation` 中）和 `spec_code` 键读取机型。
@@ -103,6 +107,7 @@ kind: "package-reference"
 <a id="known-limitations-and-deferred-work"></a>
 
 - **不上传代码** — 代码必须已经以 `<root>/<ref>/` 的形式放在集群存储上；打包本地 commit 并经开发机或任务内浅拷贝传上去的功能留待以后。
+- **下载内容不做校验** — 个人存储里缺少的代码库和安装包按名字获取，不固定提交也不检查哈希；已存的代码库不会更新，删除其目录即可重新获取。
 - **登记时不检查路径** — 登记数据源不确认目录是否存在；路径写错要等任务启动时才暴露。
 - **模板来自配置** — 运行时不能创建或修改模板，资源预设也没有和模板分开建模。
 - **选项解析靠启发式** — 队列 id 和机型按字符串形状和相等匹配，CLI 输出变化可能让选项消失而不报错。

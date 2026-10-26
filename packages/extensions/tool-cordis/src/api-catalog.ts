@@ -7414,11 +7414,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ScoJobSubmitted',
-    declaration: 'export type ScoJobSubmitted = {\n    name: string;\n    workspace?: string;\n    template?: string;\n    code?: {\n        name: string;\n        ref: string;\n    };\n    data: string[];\n    output?: string;\n};',
+    declaration: 'export type ScoJobSubmitted = {\n    name: string;\n    workspace?: string;\n    template?: string;\n    code?: {\n        name: string;\n        ref: string;\n    };\n    data: string[];\n    output?: string;\n    storage?: string;\n};',
   },
   {
     name: 'ScoJobTemplate',
-    declaration: 'export type ScoJobTemplate = {\n    description?: string;\n    image?: string;\n    imageType?: ScoImageType;\n    code?: string;\n    ref?: string;\n    data?: string[];\n    output?: string;\n    command?: string;\n    env?: Record<string, string>;\n    framework?: ScoFramework;\n    podCount?: number;\n    gpuCount?: number;\n    cpuCount?: number;\n    memoryGib?: number;\n    machineType?: string;\n    rdmaName?: string;\n    shmSizeGib?: number;\n    priority?: ScoPriority;\n    maxAttempts?: number;\n    enableQueuing?: boolean;\n};',
+    declaration: 'export type ScoJobTemplate = {\n    description?: string;\n    image?: string;\n    imageType?: ScoImageType;\n    code?: string;\n    ref?: string;\n    data?: string[];\n    output?: string;\n    storage?: string;\n    repos?: string[];\n    packages?: string[];\n    command?: string;\n    env?: Record<string, string>;\n    framework?: ScoFramework;\n    podCount?: number;\n    gpuCount?: number;\n    cpuCount?: number;\n    memoryGib?: number;\n    machineType?: string;\n    rdmaName?: string;\n    shmSizeGib?: number;\n    priority?: ScoPriority;\n    maxAttempts?: number;\n    enableQueuing?: boolean;\n};',
   },
   {
     name: 'ScoOutputSource',
@@ -7445,8 +7445,12 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type ScoQueueOption = {\n    id: string;\n    cluster: string;\n    queue: string;\n    detail: JsonValue;\n};',
   },
   {
+    name: 'ScoRepoPlan',
+    declaration: 'export type ScoRepoPlan = {\n    url: string;\n    ref?: string;\n    path: string;\n};',
+  },
+  {
     name: 'ScoResolvedSubmission',
-    declaration: 'export type ScoResolvedSubmission = {\n    request: CreateScoJobRequest;\n    template?: string;\n    code?: {\n        name: string;\n        ref: string;\n    };\n    data: string[];\n    output?: string;\n};',
+    declaration: 'export type ScoResolvedSubmission = {\n    request: CreateScoJobRequest;\n    template?: string;\n    code?: {\n        name: string;\n        ref: string;\n    };\n    data: string[];\n    output?: string;\n    storage?: ScoStoragePlan;\n};',
   },
   {
     name: 'ScoResourceOptions',
@@ -7462,15 +7466,23 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ScoSource',
-    declaration: 'export type ScoSource = ScoDataSource | ScoCodeSource | ScoOutputSource;',
+    declaration: 'export type ScoSource = ScoDataSource | ScoCodeSource | ScoOutputSource | ScoStorageSource;',
   },
   {
     name: 'ScoSourceSaveRequest',
     declaration: 'export type ScoSourceSaveRequest = {\n    name: string;\n    source: ScoSource;\n    replace?: boolean;\n};',
   },
   {
+    name: 'ScoStoragePlan',
+    declaration: 'export type ScoStoragePlan = {\n    name: string;\n    repos: ScoRepoPlan[];\n    packages: string[];\n};',
+  },
+  {
+    name: 'ScoStorageSource',
+    declaration: 'export type ScoStorageSource = {\n    kind: \'storage\';\n    volume: ScoVolume;\n    path?: string;\n    mountPath: string;\n    reposDir: string;\n    packagesDir: string;\n    description?: string;\n};',
+  },
+  {
     name: 'ScoSubmission',
-    declaration: 'export type ScoSubmission = {\n    kind: \'dry-run\';\n    resolved: CreateScoJobRequest;\n    job: JsonValue;\n} | {\n    kind: \'created\';\n    resolved: CreateScoJobRequest;\n    name: string;\n    output: string;\n};',
+    declaration: 'export type ScoSubmission = {\n    kind: \'dry-run\';\n    resolved: CreateScoJobRequest;\n    job: JsonValue;\n    storage?: ScoStoragePlan;\n} | {\n    kind: \'created\';\n    resolved: CreateScoJobRequest;\n    name: string;\n    output: string;\n    storage?: ScoStoragePlan;\n};',
   },
   {
     name: 'ScoVolume',

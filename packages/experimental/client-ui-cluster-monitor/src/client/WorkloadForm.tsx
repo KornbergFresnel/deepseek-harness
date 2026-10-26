@@ -112,6 +112,12 @@ export function WorkloadForm(props: WorkloadFormProps) {
       <Input value={draft[key]} aria-label={t(label)} onChange={(event) => { set(key)(event.target.value) }} />
     </Field>
   )
+  const lines = (key: 'repos' | 'packages', label: ClusterWorkloadKey) => (
+    <Field label={t(label)} wide>
+      <textarea className={css.textarea} rows={2} value={draft[key]} aria-label={t(label)}
+        onChange={(event) => { set(key)(event.target.value) }} />
+    </Field>
+  )
   const count = (key: CountField) => shown(key) && (
     <Field key={key} label={t(`field.${key}`)}>
       <Input value={draft[key]} inputMode="numeric" aria-label={t(`field.${key}`)} onChange={(event) => { set(key)(event.target.value) }} />
@@ -185,6 +191,13 @@ export function WorkloadForm(props: WorkloadFormProps) {
               </span>
             )}
         </div>
+      </Section>
+      <Section title={t('section.storage')}>
+        <Choice label={t('field.storage')} value={draft.storage} empty={t('field.none')}
+          options={sourcesOf(overview, 'storage').map(source => [source, source])} onChange={set('storage')} />
+        <p className={css.wideField}><span className={css.hint}>{t('field.storageHint')}</span></p>
+        {lines('repos', 'field.repos')}
+        {lines('packages', 'field.packages')}
       </Section>
       <Section title={t('section.resources')}>
         {text('workspace', 'field.workspace')}
