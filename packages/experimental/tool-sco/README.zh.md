@@ -86,7 +86,7 @@ kind: "package-bundle"
 
 #### 模型看到什么
 
-[工具目录](../../../docs/tool-catalog.zh.md#deepseek-aidsh-experimental-tool-sco)定义了这些工具。`sco_resource_options` 和 `sco_job_submit` 要求模型把机型和队列作为选项交给用户，并先做 dry run；dry run 结果在 `resolved` 里给出展开后的挂载和启动命令。`sco_job_submit` 还要求模型把任务需要的 git 代码库和 pip 安装包写进 `repos` 和 `packages` 并指定用户的个人存储，而不是在 `command` 里克隆或安装，这样任务会复用个人存储里已有的内容；结果中的 `storage` 列出每个代码库在容器内的路径。`sco_config_form` 要求模型通过表单而不是文字询问设置，预填用户已说明的内容，并从 `sco_sources_list` 推荐合适的已保存配置；结果包含用户确认的设置，用 `sco_job_submit` 提交。读取类结果包含集群返回的 JSON；日志结果包含日志文本，只保留尾部时会加上 `[earlier output truncated]` 前缀。用户拒绝的提交或停止会以审批拒绝失败。`sco_job_create` 和 `sco_job_submit` 要求模型用一句话填写任务的 `description`。`sco_job_watch` 要求模型根据代码库的 skill、文档或日志设置指标来源，并列出 `logs` 解析器和 `wandb` 的运行选项。
+[工具目录](../../../docs/tool-catalog.zh.md#deepseek-aidsh-experimental-tool-sco)定义了这些工具。`sco_resource_options` 和 `sco_job_submit` 要求模型把机型和队列作为选项交给用户，并先做 dry run；dry run 结果在 `resolved` 里给出展开后的挂载和启动命令。`sco_job_submit` 还要求模型把任务需要的 git 代码库和 pip 安装包写进 `repos` 和 `packages` 并指定用户的个人存储，而不是在 `command` 里克隆或安装，这样任务会复用个人存储里已有的内容；没有登记个人存储时，要求模型用 `sco_source_add` 或通过表单登记；结果中的 `storage` 列出每个代码库在容器内的路径。`sco_config_form` 要求模型通过表单而不是文字询问设置，预填用户已说明的内容，并从 `sco_sources_list` 推荐合适的已保存配置；结果包含用户确认的设置，用 `sco_job_submit` 提交。读取类结果包含集群返回的 JSON；日志结果包含日志文本，只保留尾部时会加上 `[earlier output truncated]` 前缀。用户拒绝的提交或停止会以审批拒绝失败。`sco_job_create` 和 `sco_job_submit` 要求模型用一句话填写任务的 `description`。`sco_job_watch` 要求模型根据代码库的 skill、文档或日志设置指标来源，并列出 `logs` 解析器和 `wandb` 的运行选项。
 
 #### Token 影响
 

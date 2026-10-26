@@ -38,12 +38,14 @@ const overview: ScoConfigOverview = {
   ],
 }
 
+const storage = { saveSource: vi.fn(async () => null as string | null), loadVolumes: vi.fn(async () => ({ ok: true as const, value: [] })) }
+
 function form(overrides: Partial<WorkloadFormProps> = {}) {
   const onSubmit = vi.fn(async () => null as string | null)
   const onCancel = vi.fn()
   const props: WorkloadFormProps = {
     kind: 'job', heading: 'WBT', initial: { image: 'img:0', env: { SEED: '1' } }, overview, save: { mode: 'optional', name: '' },
-    submitLabel: 'form.confirm', busyLabel: 'form.confirming', onSubmit, onCancel, t, ...overrides,
+    submitLabel: 'form.confirm', busyLabel: 'form.confirming', onSubmit, onCancel, storage, t, ...overrides,
   }
   return { ...render(<WorkloadForm {...props} />), onSubmit, onCancel }
 }

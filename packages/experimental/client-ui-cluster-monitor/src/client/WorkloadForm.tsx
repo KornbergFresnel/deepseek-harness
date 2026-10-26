@@ -3,6 +3,7 @@ import { useState, type FormEvent, type ReactNode } from 'react'
 import { Button, Checkbox, Input } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ScoConfigOverview, ScoSource, ScoWorkloadKind, ScoWorkloadSpec } from '@deepseek-ai/dsh-experimental-sco-submit/types'
+import { StorageAdder, type StorageActions } from './StorageAdder.tsx'
 import { draftOf, JOB_ONLY, specOf, type CountField, type WorkloadDraft } from './workload.ts'
 import type { ClusterWorkloadKey } from './workload-locales.ts'
 import css from './WorkloadForm.module.css'
@@ -37,6 +38,8 @@ export interface WorkloadFormProps {
   /** Resolves to a failure message, or null after the Host accepted the result. */
   readonly onSubmit: (result: WorkloadFormResult) => Promise<string | null>
   readonly onCancel: () => void
+  /** Register a personal storage source from inside the form. */
+  readonly storage: StorageActions
   readonly t: WorkloadTranslate
 }
 
@@ -196,6 +199,7 @@ export function WorkloadForm(props: WorkloadFormProps) {
         <Choice label={t('field.storage')} value={draft.storage} empty={t('field.none')}
           options={sourcesOf(overview, 'storage').map(source => [source, source])} onChange={set('storage')} />
         <p className={css.wideField}><span className={css.hint}>{t('field.storageHint')}</span></p>
+        <StorageAdder registered={sourcesOf(overview, 'storage').length > 0} actions={props.storage} onAdded={set('storage')} t={t} />
         {lines('repos', 'field.repos')}
         {lines('packages', 'field.packages')}
       </Section>

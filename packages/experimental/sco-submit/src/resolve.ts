@@ -252,7 +252,7 @@ export function resolveSubmission(request: SubmitScoJobRequest, context: Resolve
     steps.push(...storageSteps(source, plans, packages, context))
     storage = { name: storageName, repos: plans, packages: packages.map(entry => entry.trim()) }
   } else if (repos.length > 0 || packages.length > 0) {
-    throw new Error('sco-submit: repos and packages need a storage source to look them up in and download them into')
+    throw new Error('sco-submit: repos and packages need a storage source to look them up in and download them into; register the personal storage as a storage source first')
   }
   let code: ScoResolvedSubmission['code']
   if (codeName !== undefined) {

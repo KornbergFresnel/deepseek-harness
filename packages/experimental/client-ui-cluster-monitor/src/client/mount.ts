@@ -25,6 +25,7 @@ import { FormToolRow, type FormRowInjected } from './FormToolRow.tsx'
 import { en, NS, zh, type ClusterMonitorKey } from './locales.ts'
 import { PresetsIcon } from './PresetsIcon.tsx'
 import { SavedConfigsPage, type SavedConfigsInjected } from './SavedConfigsPage.tsx'
+import type { StorageActions } from './StorageAdder.tsx'
 import { SessionJobsGuide, SessionJobsTab, SessionJobsTitle, type SessionJobsInjected } from './SessionJobs.tsx'
 import { observeForms, observeJob, observeOverview, observeWatchList } from './source.ts'
 import { WORKLOAD_NS, workloadEn, workloadZh, type ClusterWorkloadKey } from './workload-locales.ts'
@@ -120,16 +121,19 @@ function registerConfigUi(ctx: Context): void {
   const t = ctx.locale.bind(CONFIG_NS)
   const overview = observeOverview(ctx)
   ctx.effect(() => overview.dispose, 'cluster-config: overview stream')
-  const injected: ConfigPageInjected = {
-    hooks: { overview: overview.store },
+  const storage: StorageActions = {
     saveSource: async (request: ScoSourceSaveRequest) => outcome(await ctx.remote.clusterConfig.saveSource(request)),
-    deleteSource: async (name: string) => outcome(await ctx.remote.clusterConfig.deleteSource(name)),
-    saveDefaults: async (defaults: ScoDefaults) => outcome(await ctx.remote.clusterConfig.saveDefaults(defaults)),
-    refreshOptions: async () => outcome(await ctx.remote.clusterConfig.refreshOptions()),
     loadVolumes: async () => {
       const result = await ctx.remote.clusterConfig.volumes()
       return result.ok ? { ok: true, value: result.value } : { ok: false, message: result.error.message }
     },
+  }
+  const injected: ConfigPageInjected = {
+    hooks: { overview: overview.store },
+    ...storage,
+    deleteSource: async (name: string) => outcome(await ctx.remote.clusterConfig.deleteSource(name)),
+    saveDefaults: async (defaults: ScoDefaults) => outcome(await ctx.remote.clusterConfig.saveDefaults(defaults)),
+    refreshOptions: async () => outcome(await ctx.remote.clusterConfig.refreshOptions()),
   }
   ctx.slots.inject('main', () => ctx.slots.register({
     name: 'main', key: CONFIG_PANEL_ID, locale: CONFIG_NS, inject: () => injected,
@@ -137,10 +141,10 @@ function registerConfigUi(ctx: Context): void {
   ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
     name: 'sidebar.panellist', id: CONFIG_PANEL_ID, order: 31, locale: CONFIG_NS, label: () => t('panel'),
   }, ConfigIcon))
-  registerWorkloadUi(ctx, overview.store)
+  registerWorkloadUi(ctx, overview.store, storage)
 }
 
-function registerWorkloadUi(ctx: Context, overview: FormRowInjected['hooks']['overview']): void {
+function registerWorkloadUi(ctx: Context, overview: FormRowInjected['hooks']['overview'], storage: StorageActions): void {
   ctx.effect(() => ctx.locale.register(WORKLOAD_NS, { zh: workloadZh, en: workloadEn }), 'cluster-workload: dictionaries')
   const t = ctx.locale.bind(WORKLOAD_NS)
   const forms = observeForms(ctx)
@@ -151,6 +155,7 @@ function registerWorkloadUi(ctx: Context, overview: FormRowInjected['hooks']['ov
     answer: async (callId: string, answer: ScoConfigFormAnswer) =>
       outcome(await ctx.remote.clusterConfig.answerForm(brandString<ToolCallId>(callId), answer)),
     saveConfig,
+    storage,
   }
   ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({
     name: 'tool.call.toolview', key: FORM_TOOL, locale: WORKLOAD_NS, inject: () => row,
@@ -159,6 +164,7 @@ function registerWorkloadUi(ctx: Context, overview: FormRowInjected['hooks']['ov
     hooks: { overview },
     saveConfig,
     deleteConfig: async (name: string) => outcome(await ctx.remote.clusterConfig.deleteConfig(name)),
+    storage,
   }
   ctx.slots.inject('main', () => ctx.slots.register({
     name: 'main', key: PRESETS_PANEL_ID, locale: WORKLOAD_NS, inject: () => presets,
