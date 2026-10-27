@@ -42,6 +42,8 @@ flowchart LR
   pkg_experimental_cluster_metrics_wandb["experimental-cluster-metrics-wandb"]
   pkg_experimental_git_branch["experimental-git-branch"]
   svc_gitBranch["ctx.gitBranch<br/>Session Git branch"]
+  pkg_experimental_feishu_bridge["experimental-feishu-bridge"]
+  svc_feishuBridge["ctx.feishuBridge<br/>Feishu chat bridge"]
   pkg_working_directory["working-directory"]
   svc_workingDirectory["ctx.workingDirectory<br/>Session working directory"]
   pkg_tool_working_directory["tool-working-directory"]
@@ -358,6 +360,7 @@ flowchart LR
   pkg_experimental_cluster_monitor --> svc_clusterMonitor
   pkg_experimental_computer_use_cua_driver_mcp --> svc_computerUse
   pkg_experimental_computer_use_cua_driver_native --> svc_computerUse
+  pkg_experimental_feishu_bridge --> svc_feishuBridge
   pkg_experimental_git_branch --> svc_gitBranch
   pkg_experimental_ptc_runtime_python --> svc_ptcRuntime
   pkg_experimental_sco --> svc_sco
@@ -646,6 +649,7 @@ flowchart LR
 | `ctx.scoSubmit` | `seam` | [`experimental-sco-submit`](../packages/experimental/sco-submit) | [`experimental-sco-submit`](../packages/experimental/sco-submit) | [`experimental-tool-sco`](../packages/experimental/tool-sco) | - | 显式实验登记表，保存数据、代码和输出位置以及缓存的队列选项；把配置的模板展开为网关创建参数。 |
 | `ctx.clusterMonitor` | `seam` | [`experimental-cluster-monitor`](../packages/experimental/cluster-monitor) | [`experimental-cluster-monitor`](../packages/experimental/cluster-monitor) | [`experimental-tool-sco`](../packages/experimental/tool-sco), [`experimental-cluster-metrics-wandb`](../packages/experimental/cluster-metrics-wandb) | - | 在 Host 计时器上通过 SSP 网关轮询关注的任务，并向 Web 页面提供状态、来自已注册指标来源的曲线和日志尾部；轮询从不进入模型请求，只有 sco_job_watch 的结果会进入。 |
 | `ctx.gitBranch` | `core` | [`experimental-git-branch`](../packages/experimental/git-branch) | - | - | - | 通过会话的 subprocess provider 为 Web 客户端读取和切换会话工作目录的 Git 分支；不进入任何模型请求。 |
+| `ctx.feishuBridge` | `core` | [`experimental-feishu-bridge`](../packages/experimental/feishu-bridge) | - | - | - | 通过 lark-cli 把飞书聊天绑定到工作区会话：聊天消息成为用户提示，回复以卡片发回，卡片按钮和表单应答权限请求和提问。 |
 | `ctx.workingDirectory` | `seam` | [`working-directory`](../packages/session/working-directory) | [`working-directory`](../packages/session/working-directory) | [`tool-working-directory`](../packages/session/tool-working-directory), [`tool-fs`](../packages/fs/tool-fs), [`tool-bash`](../packages/shell/tool-bash), [`tool-pwsh`](../packages/shell/tool-pwsh), [`subagent`](../packages/subagent/subagent), [`sdk-jsonrpc-server`](../packages/sdk/server) | - | 一个 Session 投影拥有有效执行目录。文件系统验证变更，用户上下文报告目录信息，原始元数据与写入授权保持不变。 |
 | `ctx.mcpResources` | `seam` | [`mcp-resources`](../packages/mcp/mcp-resources) | [`mcp-client`](../packages/mcp/mcp-client) | [`mcp-resources`](../packages/mcp/mcp-resources) | - | 连接所有者提供的操作在调用 agent 的作用域内服务于共享资源工具。 |
 | `ctx.browserUse` | `seam` | [`browser-use`](../packages/browser-use/browser-use) | [`experimental-browser-use-playwright-mcp`](../packages/experimental/browser-use-playwright-mcp), [`experimental-browser-use-chrome-devtools-mcp`](../packages/experimental/browser-use-chrome-devtools-mcp), [`experimental-browser-use-stagehand-native`](../packages/experimental/browser-use-stagehand-native) | [`experimental-browser-use-playwright-mcp`](../packages/experimental/browser-use-playwright-mcp), [`experimental-browser-use-chrome-devtools-mcp`](../packages/experimental/browser-use-chrome-devtools-mcp), [`experimental-browser-use-stagehand-native`](../packages/experimental/browser-use-stagehand-native) | - | 每个服务实例注册一个提供方拥有的名称。提供方按实时 Session 拥有自己的工具与浏览器资源；共享服务不提供浏览器操作 API。 |

@@ -1,0 +1,31 @@
+# 把飞书机器人接到 dsh：飞书聊天里的消息发给绑定的会话，回复、权限请求和提问以卡片形式发回飞书。
+# Web 会话标题栏会多出"连接飞书"按钮，可把当前会话（任意工作目录）连接到飞书聊天。
+# 先安装并登录 lark-cli（`lark-cli config init`），再填好下面的 open_id。
+# 用法：在 deepseek-harness 仓库根目录执行
+#   pnpm dsh web --patch packages/experimental/feishu-bridge/feishu.patch.yml
+- insert:
+    - id: feishu-bridge
+      name: '@deepseek-ai/dsh-experimental-feishu-bridge'
+      config:
+        # 允许使用机器人的飞书用户 open_id（ou_ 开头）。不知道自己的 open_id 时，
+        # 先私聊机器人发一条消息，机器人会回复你的 open_id
+        allowedUsers:
+          - ou_<你的 open_id>
+        # 从飞书新建的会话使用的工作目录（绝对路径，可选）。不设置时，飞书里会弹出卡片，
+        # 从 Web 中打开过的工作区里选择；也可以发送 `/new <绝对路径>` 在任意目录新建会话
+        # workspacePath: /home/<你的用户名>/<项目目录>
+        # 只服务这些聊天（oc_ 开头）；删掉这一项则服务机器人所在的所有聊天
+        # allowedChats:
+        #   - oc_<聊天 ID>
+        # lark-cli 的绝对路径；lark-cli 已在 PATH 里可以删掉这一行
+        # command: /usr/local/bin/lark-cli
+        # lark-cli 的 profile（可选）
+        # profile: <profile 名>
+        # 新会话的权限预设（可选），例如 ask 表示需要批准的工具调用会在飞书里弹出批准卡片
+        # permissionPreset: ask
+        # 卡片语言：zh 或 en
+        locale: zh
+        # 是否把模型的思考过程一起发到飞书（折叠显示）
+        forwardReasoning: false
+    - id: client-ui-feishu-bridge
+      name: '@deepseek-ai/dsh-experimental-client-ui-feishu-bridge'

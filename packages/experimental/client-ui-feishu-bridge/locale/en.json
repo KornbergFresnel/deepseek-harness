@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Feishu chat connection",
+    "description": "Connect the open Session to a Feishu chat from a chip in the Session header."
+  }
+}
