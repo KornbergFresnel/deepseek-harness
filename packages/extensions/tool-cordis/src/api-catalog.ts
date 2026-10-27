@@ -1120,6 +1120,37 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'feishuBridge',
+    summary: 'The Feishu bridge service.',
+    description: 'The Feishu bridge service. Chats bind to Sessions durably in the `feishu_bridge` storage domain; one Session is bound to at most one chat.',
+    methods: [
+      {
+        signature: 'chatOf(sessionId: SessionId): FeishuChatId | undefined',
+        description: 'The chat bound to a Session.',
+        parameters: [{ name: 'sessionId', description: 'Session identity.' }],
+        returns: 'the chat, or undefined when no chat drives the Session.',
+      },
+      {
+        signature: 'sessionOf(chatId: FeishuChatId): SessionId | undefined',
+        description: 'The Session a chat drives.',
+        parameters: [{ name: 'chatId', description: 'Feishu chat.' }],
+        returns: 'the bound Session, or undefined.',
+      },
+      {
+        signature: 'async bind(chatId: FeishuChatId, sessionId: SessionId, operator: FeishuOpenId): Promise<void>',
+        description: 'Bind a chat to a Session, replacing the chat\'s previous binding.',
+        parameters: [{ name: 'chatId', description: 'Feishu chat.' }, { name: 'sessionId', description: 'Session the chat drives from now on.' }, { name: 'operator', description: 'Feishu user who asked for the binding.' }],
+        throws: ['when the Session is bound to another chat.'],
+      },
+      {
+        signature: 'async unbind(chatId: FeishuChatId): Promise<boolean>',
+        description: 'Remove a chat\'s binding.',
+        parameters: [{ name: 'chatId', description: 'Feishu chat.' }],
+        returns: 'whether the chat was bound.',
+      },
+    ],
+  },
+  {
     key: 'fileReferences',
     summary: 'Host capability for cancellable file-reference discovery.',
     description: 'Host capability for cancellable file-reference discovery.',
@@ -5847,6 +5878,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'FeedbackCategory',
     declaration: 'export type FeedbackCategory = \'task-result\' | \'instruction-following\' | \'product-interaction\' | \'service-stability\' | \'resource-cost\' | \'security-privacy-permission\' | \'other\';',
+  },
+  {
+    name: 'FeishuChatId',
+    declaration: 'export type FeishuChatId = Branded<\'FeishuChatId\'>;',
+  },
+  {
+    name: 'FeishuOpenId',
+    declaration: 'export type FeishuOpenId = Branded<\'FeishuOpenId\'>;',
   },
   {
     name: 'FiberState',

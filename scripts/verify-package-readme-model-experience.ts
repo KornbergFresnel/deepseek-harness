@@ -65,6 +65,7 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/experimental/cluster-monitor': { kind: 'none', reason: 'Polls SSP jobs on Host timers and serves results only to the Web client.' },
   'packages/experimental/cluster-metrics-wandb': { kind: 'none', reason: 'Reads W&B run history on Host polls and serves records only to the Web client.' },
   'packages/experimental/client-ui-cluster-monitor': { kind: 'none', reason: 'Renders Host watch state in the browser without writing to a Session.' },
+  'packages/experimental/feishu-bridge': { kind: 'indirect', reason: 'Feishu messages reach the model as ordinary user prompts; the bridge contributes no prompt text of its own.' },
   'packages/experimental/git-branch': { kind: 'none', reason: 'Serves branch state and switching only to the Web client.' },
   'packages/experimental/client-ui-git-branch': { kind: 'none', reason: 'Reads and switches the working tree branch in the browser without writing to a Session.' },
   'packages/ssh/ssh': { kind: 'none', reason: 'The connection owner transports private provider operations; consumers own all model-facing content.' },

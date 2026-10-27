@@ -36,6 +36,10 @@ Failed attachment disposes the new Agent before a prompt exists. A failure betwe
 
 The [GitHub review guide](../user/guide/github-review.md) mounts this route on an isolated second WebServer so exposing webhook ingress does not expose the browser API.
 
+## Feishu chat bridge
+
+The experimental [`@deepseek-ai/dsh-experimental-feishu-bridge`](../../packages/experimental/feishu-bridge/README.md) is a separate, stateful ingress outside this runtime. `ctx.feishuBridge` binds a Feishu chat to one Workspace Session, prompts it through the Session controller with an idempotent request id per Feishu message, forwards replies as cards, and answers the bound Session's permission requests and questions from card callbacks. Bindings persist across restarts.
+
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
 <a id="cordis-surface"></a>
@@ -43,6 +47,48 @@ The [GitHub review guide](../user/guide/github-review.md) mounts this route on a
 ## Cordis API
 
 Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnpm run verify-cordis-catalog` in doc-sync; regenerate with `pnpm run gen-cordis-catalog`) — the language sides differ only in locale-specific paired document paths. Signature blocks use a `ts cordis-catalog` fence and keep the original source JSDoc; dispatch modes are defined in the [primer](../cordis-primer.md#dispatch-modes), and the framework-inherited `ctx` API lives in [cordis-api/inherited.md](../cordis-api/inherited.md).
+
+<a id="ctxfeishubridge--feishubridge"></a>
+
+### `ctx.feishuBridge` — `FeishuBridge`
+
+The Feishu bridge service. Chats bind to Sessions durably in the `feishu_bridge` storage domain; one Session is bound to at most one chat.
+
+```ts cordis-catalog
+/**
+ * The chat bound to a Session.
+ * @param sessionId - Session identity.
+ * @returns the chat, or undefined when no chat drives the Session.
+ */
+chatOf(sessionId: SessionId): FeishuChatId | undefined
+
+/**
+ * The Session a chat drives.
+ * @param chatId - Feishu chat.
+ * @returns the bound Session, or undefined.
+ */
+sessionOf(chatId: FeishuChatId): SessionId | undefined
+
+/**
+ * Bind a chat to a Session, replacing the chat's previous binding.
+ * @param chatId - Feishu chat.
+ * @param sessionId - Session the chat drives from now on.
+ * @param operator - Feishu user who asked for the binding.
+ * @throws when the Session is bound to another chat.
+ */
+async bind(chatId: FeishuChatId, sessionId: SessionId, operator: FeishuOpenId): Promise<void>
+
+/**
+ * Remove a chat's binding.
+ * @param chatId - Feishu chat.
+ * @returns whether the chat was bound.
+ */
+async unbind(chatId: FeishuChatId): Promise<boolean>
+```
+
+Types: [SessionId](core.md)
+
+Source: [`packages/experimental/feishu-bridge/src/index.ts`](../../packages/experimental/feishu-bridge/src/index.ts)
 
 <a id="ctxwebhookruntime--webhookruntime"></a>
 

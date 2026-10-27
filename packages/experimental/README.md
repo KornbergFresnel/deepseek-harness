@@ -91,6 +91,7 @@ Promotion requires a named product role, documented public behavior and limitati
 | [`client-ui-cluster-monitor`](client-ui-cluster-monitor/README.md) | The Cluster jobs page for watched SSP jobs | — |
 | [`git-branch`](git-branch/README.md) | The checked-out branch and branch switching for a Session's working directory | `ctx.gitBranch` |
 | [`client-ui-git-branch`](client-ui-git-branch/README.md) | The Git branch chip on the New Session screen | — |
+| [`feishu-bridge`](feishu-bridge/README.md) | Feishu chats bound to Workspace Sessions through lark-cli, with approvals and questions answered from cards | `ctx.feishuBridge` |
 
 -----
 

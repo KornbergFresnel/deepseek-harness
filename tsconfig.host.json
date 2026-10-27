@@ -367,6 +367,7 @@
     { "path": "./packages/experimental/tool-sco" },
     { "path": "./packages/experimental/cluster-monitor" },
     { "path": "./packages/experimental/cluster-metrics-wandb" },
+    { "path": "./packages/experimental/feishu-bridge" },
     { "path": "./packages/experimental/sco-submit" },
     { "path": "./packages/experimental/git-branch" },
     { "path": "./packages/session/tool-working-directory" },
