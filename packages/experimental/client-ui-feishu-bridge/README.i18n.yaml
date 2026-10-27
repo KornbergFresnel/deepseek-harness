@@ -1,0 +1,37 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/client-ui-feishu-bridge/README.md
+/:
+  en: a63e06f74b83361f
+  zh: be9ffd88357348e6
+/deepseek-ai-dsh-experimental-client-ui-feishu-bridge:
+  en: e13fb15db26288ed
+  zh: ecb07135d2054521
+/deepseek-ai-dsh-experimental-client-ui-feishu-bridge/summary:
+  en: 9a25e5aca80eafae
+  zh: eed58db0fcef3e90
+/deepseek-ai-dsh-experimental-client-ui-feishu-bridge/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 2f8a621b991260a1
+/deepseek-ai-dsh-experimental-client-ui-feishu-bridge/use-this-package:
+  en: a73be78e58da5c55
+  zh: aad67c8284d64da9
+/deepseek-ai-dsh-experimental-client-ui-feishu-bridge/understand-the-implementation:
+  en: 05288736e0e7872c
+  zh: 07f55b25e55e5c77
+/deepseek-ai-dsh-experimental-client-ui-feishu-bridge/further-exploration:
+  en: 5b19670f6054bc98
+  zh: e7cf9e3704d02ac7
+/deepseek-ai-dsh-experimental-client-ui-feishu-bridge/model-experience:
+  en: 48267263437c4782
+  zh: 60a51056accb499f
+/deepseek-ai-dsh-experimental-client-ui-feishu-bridge/model-experience/kv-cache-effect:
+  en: e277b74f9b721f5e
+  zh: 014c91db5c8570d0
+/deepseek-ai-dsh-experimental-client-ui-feishu-bridge/known-limitations-and-deferred-work:
+  en: 0d71bf67f0689e13
+  zh: 278b1e1b374e27d1
+/deepseek-ai-dsh-experimental-client-ui-feishu-bridge/known-limitations-and-deferred-work/dev-note:
+  en: 0225ba087c5266f3
+  zh: 9c1d441532d6e9e6

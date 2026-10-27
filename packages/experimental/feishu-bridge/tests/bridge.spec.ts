@@ -38,6 +38,9 @@ class FakeTransport implements FeishuTransport {
   readonly updates: { messageId: string; card: FeishuCard }[] = []
   failSends = false
   failUpdates = false
+  readonly names = new Map<string, string>()
+  failNames = false
+  readonly nameReads: string[] = []
   private deliver: ((event: FeishuInbound) => void) | undefined
 
   consume(onEvent: (event: FeishuInbound) => void, signal: AbortSignal): Promise<void> {
@@ -56,6 +59,12 @@ class FakeTransport implements FeishuTransport {
     if (this.failUpdates) return Promise.reject(new Error('update refused'))
     this.updates.push({ messageId, card })
     return Promise.resolve()
+  }
+
+  chatName(chatId: FeishuChatId): Promise<string | undefined> {
+    this.nameReads.push(chatId)
+    if (this.failNames) return Promise.reject(new Error('name refused'))
+    return Promise.resolve(this.names.get(chatId))
   }
 
   get ready(): boolean {
@@ -104,6 +113,7 @@ interface Harness {
   transport: FakeTransport
   root: string
   agents: Map<string, Agent>
+  workspaces: FakeWorkspace[]
   calls: {
     created: unknown[]
     prompts: { requestId: string; sessionId: string; content: unknown }[]
@@ -114,7 +124,16 @@ interface Harness {
   }
 }
 
+/** A registered Workspace stand-in. */
+interface FakeWorkspace {
+  id: string
+  title: string
+  path: string
+  sessionIds: string[]
+}
+
 interface BootOptions {
+  workspaces?: FakeWorkspace[]
   root?: string
   transport?: FakeTransport
   services?: boolean
@@ -133,13 +152,25 @@ async function boot(config: Partial<Config> = {}, options: BootOptions = {}): Pr
   await ctx.plugin(StorageDomain, { backend: 'json' })
   ctx.provide('subprocess', {} as never)
   ctx.provide('agents', { get: (id: string) => agents.get(id) } as never)
-  ctx.provide('workspaceRegistry', { create: (path: string) => Promise.resolve({ id: 'ws-1', path }) } as never)
+  const workspaces = options.workspaces ?? []
+  ctx.provide('workspaceRegistry', {
+    create(path: string) {
+      let workspace = workspaces.find(item => item.path === path)
+      if (workspace === undefined) {
+        workspace = { id: `ws-${String(workspaces.length + 1)}`, title: path.split('/').at(-1)!, path, sessionIds: [] }
+        workspaces.push(workspace)
+      }
+      return Promise.resolve(workspace)
+    },
+    list: () => workspaces,
+  } as never)
   ctx.provide('sessionController', {
-    create(request: unknown) {
+    create(request: { workspaceId: string }) {
       calls.created.push(request)
       createdSessions += 1
       const id = `session-${String(createdSessions)}`
       agents.set(id, fakeAgent(id))
+      workspaces.find(workspace => workspace.id === request.workspaceId)?.sessionIds.push(id)
       return Promise.resolve({ sessionId: id })
     },
     prompt(request: Harness['calls']['prompts'][number]) {
@@ -188,7 +219,7 @@ async function boot(config: Partial<Config> = {}, options: BootOptions = {}): Pr
   }
   await ctx.plugin(TestBridge, { allowedUsers: [ALICE], workspacePath: '/work/rlh', locale: 'en', ...config })
   await vi.waitFor(() => { expect(transport.ready).toBe(true) })
-  return { ctx, transport, root, agents, calls }
+  return { ctx, transport, root, agents, workspaces, calls }
 }
 
 /** Emit one committed Session event to the bridge. */
@@ -612,5 +643,139 @@ describe('lifecycle', () => {
     contexts.splice(contexts.indexOf(harness.ctx), 1)
     await harness.ctx.fiber.dispose()
     expect(harness.calls.answered).toEqual([])
+  })
+})
+
+describe('Web connection', () => {
+  it('remembers chats with group names, lists them newest first, and connects and disconnects the open Session', async () => {
+    const harness = await boot({ allowedChats: [CHAT, 'oc_other', 'oc_dm'] })
+    harness.transport.names.set(CHAT, 'Research')
+    const agent = await bound(harness)
+    harness.transport.message('hi', { chat: 'oc_dm', chatType: 'p2p', id: 'om_dm' })
+    harness.transport.message('hi', { chat: 'oc_hidden', id: 'om_hidden' })
+    const bridge = harness.ctx.feishuBridge
+    await vi.waitFor(() => { expect(bridge.status(agent).chats.map(chat => chat.chatId)).toEqual(['oc_dm', CHAT]) })
+    await vi.waitFor(() => { expect(bridge.status(agent).chat).toEqual({ chatId: CHAT, chatType: 'group', name: 'Research', sessionId: 'session-1' }) })
+    expect(harness.transport.nameReads).toEqual([CHAT])
+    harness.transport.message('again', { id: 'om_again' })
+    await vi.waitFor(() => { expect(harness.calls.prompts.map(prompt => prompt.requestId)).toContain('feishu-om_again') })
+    expect(harness.transport.nameReads).toEqual([CHAT])
+
+    const web = fakeAgent('web-session')
+    harness.workspaces.push({ id: 'ws-web', title: 'rlh', path: '/work/rlh-web', sessionIds: ['web-session'] })
+    const lastIn = (chatId: string): string => JSON.stringify(harness.transport.sent.filter(sent => sent.chatId === chatId).at(-1)?.card)
+    await vi.waitFor(() => { expect(lastIn('oc_dm')).toContain('Started Session `session-2`') })
+    const connected = await bridge.connect(web, { chatId: brandString<FeishuChatId>(CHAT) })
+    expect(connected.chat).toMatchObject({ chatId: CHAT, sessionId: 'web-session' })
+    await vi.waitFor(() => { expect(lastIn(CHAT)).toContain('connected this chat to Session `web-session` in workspace **rlh** `/work/rlh-web`') })
+    expect(bridge.chatOf(brandString<SessionId>('session-1'))).toBeUndefined()
+
+    expect((await bridge.connect(web, { chatId: brandString<FeishuChatId>(CHAT) })).chat?.chatId).toBe(CHAT)
+    const moved = await bridge.connect(web, { chatId: brandString<FeishuChatId>('oc_dm') })
+    expect(moved.chat).toEqual({ chatId: 'oc_dm', chatType: 'p2p', name: null, sessionId: 'web-session' })
+    await vi.waitFor(() => { expect(lastIn(CHAT)).toContain('disconnected from Session `web-session`') })
+    await vi.waitFor(() => { expect(lastIn('oc_dm')).toContain('connected this chat to Session `web-session` in workspace') })
+    await bridge.connect(fakeAgent('loose'), { chatId: brandString<FeishuChatId>(CHAT) })
+    await vi.waitFor(() => { expect(lastIn(CHAT)).toContain('connected this chat to Session `loose`.') })
+
+    await expect(bridge.connect(web, { chatId: brandString<FeishuChatId>('oc_hidden') })).rejects.toThrow('is not available')
+    await expect(bridge.connect(web, { chatId: brandString<FeishuChatId>('oc_other') })).rejects.toThrow('is not available')
+
+    expect((await bridge.disconnect(web)).chat).toBeNull()
+    await vi.waitFor(() => { expect(lastIn('oc_dm')).toContain('disconnected this chat from Session `web-session`') })
+    const count = harness.transport.sent.length
+    expect((await bridge.disconnect(web)).chat).toBeNull()
+    expect(harness.transport.sent).toHaveLength(count)
+  })
+
+  it('logs a chat name that cannot be read and lists bound chats it never saw', async () => {
+    const first = await boot()
+    const agent = await bound(first)
+    contexts.splice(contexts.indexOf(first.ctx), 1)
+    await first.ctx.fiber.dispose()
+    const storage = await boot({}, { root: first.root })
+    expect(storage.ctx.feishuBridge.status(agent).chat).toMatchObject({ chatId: CHAT, name: null })
+    await storage.ctx.feishuBridge.bind(brandString<FeishuChatId>('oc_quiet'), brandString<SessionId>('session-9'), 'web')
+    expect(storage.ctx.feishuBridge.status(agent).chats).toEqual([
+      expect.objectContaining({ chatId: CHAT }),
+      { chatId: 'oc_quiet', chatType: 'group', name: null, sessionId: 'session-9' },
+    ])
+
+    const harness = await boot()
+    harness.transport.failNames = true
+    const warn = vi.spyOn(harness.ctx.logger, 'warn')
+    harness.transport.message('hi', { id: 'om_x' })
+    await vi.waitFor(() => { expect(warn).toHaveBeenCalledWith(expect.stringContaining('could not remember chat oc_team: name refused')) })
+    const unknown = await boot({}, { root: await realpath(await mkdtemp(join(tmpdir(), 'dsh-feishu-'))) })
+    cleanup.push(unknown.root)
+    expect(unknown.ctx.feishuBridge.status(fakeAgent('none'))).toEqual({ chat: null, chats: [] })
+  })
+})
+
+describe('workspace choice', () => {
+  const WORKSPACES = (): FakeWorkspace[] => [
+    { id: 'ws-a', title: 'alpha', path: '/work/alpha', sessionIds: [] },
+    { id: 'ws-b', title: 'beta', path: '/work/beta', sessionIds: [] },
+  ]
+  const pickerCards = (harness: Harness) => harness.transport.sent.filter(sent => JSON.stringify(sent.card).includes('Choose a workspace'))
+
+  it('asks for a workspace before the first Session, then delivers the waiting message', async () => {
+    const harness = await boot({ workspacePath: undefined }, { workspaces: WORKSPACES() })
+    harness.transport.message('train it', { id: 'om_first' })
+    await vi.waitFor(() => { expect(pickerCards(harness)).toHaveLength(1) })
+    const picker = pickerCards(harness)[0]!
+    expect(JSON.stringify(picker.card)).toContain('alpha — /work/alpha')
+    expect(JSON.stringify(picker.card)).not.toContain('initial_option')
+    expect(JSON.stringify(picker.card)).toContain('sent to the new Session')
+    harness.transport.action(picker.messageId, undefined, { operator: MALLORY, form: { workspace: 'ws-a' } })
+    harness.transport.action(picker.messageId, undefined, { form: { workspace: 'ws-zzz' } })
+    await vi.waitFor(() => { expect(JSON.stringify(harness.transport.updates.at(-1)?.card)).toContain('Choose a workspace before starting.') })
+    harness.transport.action(picker.messageId, undefined)
+    await vi.waitFor(() => { expect(harness.transport.updates).toHaveLength(2) })
+    harness.transport.action(picker.messageId, undefined, { form: { workspace: 'ws-b' } })
+    await vi.waitFor(() => { expect(harness.calls.prompts).toHaveLength(1) })
+    expect(harness.calls.created).toEqual([{ workspaceId: 'ws-b' }])
+    expect(harness.calls.prompts[0]).toMatchObject({ requestId: 'feishu-om_first', sessionId: 'session-1', content: [{ type: 'text', text: 'train it' }] })
+    await vi.waitFor(() => { expect(JSON.stringify(harness.transport.updates.at(-1)?.card)).toContain('Started Session') })
+    expect(JSON.stringify(harness.transport.updates.at(-1)?.card)).toContain('<at id=ou_alice></at>')
+
+    harness.transport.message('/status')
+    await vi.waitFor(() => { expect(harness.transport.texts(harness.transport.sent.length - 1)).toContain('beta `/work/beta`') })
+    harness.transport.message('/new')
+    await vi.waitFor(() => { expect(pickerCards(harness)).toHaveLength(2) })
+    expect(JSON.stringify(pickerCards(harness)[1]!.card)).toContain('"initial_option":"ws-b"')
+    expect(JSON.stringify(pickerCards(harness)[1]!.card)).not.toContain('sent to the new Session')
+    harness.transport.action(pickerCards(harness)[1]!.messageId, undefined, { form: { workspace: 'ws-a' } })
+    await vi.waitFor(() => { expect(harness.ctx.feishuBridge.sessionOf(brandString<FeishuChatId>(CHAT))).toBe('session-2') })
+    expect(harness.calls.prompts).toHaveLength(1)
+  })
+
+  it('runs a waiting slash command once the Session starts, and lets a pending picker lapse on shutdown', async () => {
+    const harness = await boot({ workspacePath: undefined }, { workspaces: WORKSPACES() })
+    harness.transport.message('/compact', { id: 'om_c' })
+    await vi.waitFor(() => { expect(pickerCards(harness)).toHaveLength(1) })
+    harness.transport.action(pickerCards(harness)[0]!.messageId, undefined, { form: { workspace: 'ws-a' } })
+    await vi.waitFor(() => { expect(harness.calls.executed).toEqual(['/compact']) })
+    harness.transport.message('/new')
+    await vi.waitFor(() => { expect(pickerCards(harness)).toHaveLength(2) })
+    contexts.splice(contexts.indexOf(harness.ctx), 1)
+    await harness.ctx.fiber.dispose()
+  })
+
+  it('starts Sessions from a path or the configured workspace, and explains when there is no workspace', async () => {
+    const harness = await boot({ workspacePath: undefined })
+    harness.transport.message('hi')
+    await vi.waitFor(() => { expect(harness.transport.texts(0)).toContain('There is no workspace yet') })
+    harness.transport.message('/new relative/dir')
+    await vi.waitFor(() => { expect(harness.transport.texts(1)).toContain('Usage: `/new` or `/new <absolute path>`') })
+    harness.transport.message('/new /work/gamma')
+    await vi.waitFor(() => { expect(harness.transport.texts(2)).toContain('Started Session `session-1` in workspace **gamma** `/work/gamma`') })
+    expect(harness.calls.created).toEqual([{ workspaceId: 'ws-1' }])
+
+    const configured = await boot()
+    configured.transport.message('/new')
+    await vi.waitFor(() => { expect(configured.transport.texts(0)).toContain('in workspace **rlh** `/work/rlh`') })
+    configured.transport.message('/new')
+    await vi.waitFor(() => { expect(JSON.stringify(configured.transport.sent[1]?.card)).toContain('"initial_option":"ws-1"') })
   })
 })

@@ -45,6 +45,9 @@
       "path": "../../subprocess/subprocess"
     },
     {
+      "path": "../../typert/protocol"
+    },
+    {
       "path": "../../util/timeout"
     },
     {

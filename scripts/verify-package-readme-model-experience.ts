@@ -68,6 +68,7 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/experimental/feishu-bridge': { kind: 'indirect', reason: 'Feishu messages reach the model as ordinary user prompts; the bridge contributes no prompt text of its own.' },
   'packages/experimental/git-branch': { kind: 'none', reason: 'Serves branch state and switching only to the Web client.' },
   'packages/experimental/client-ui-git-branch': { kind: 'none', reason: 'Reads and switches the working tree branch in the browser without writing to a Session.' },
+  'packages/experimental/client-ui-feishu-bridge': { kind: 'none', reason: 'Changes which Feishu chat drives a Session without writing to the Session.' },
   'packages/ssh/ssh': { kind: 'none', reason: 'The connection owner transports private provider operations; consumers own all model-facing content.' },
   'packages/ssh/fs-ssh': { kind: 'indirect', reason: 'The remote filesystem delegates model rendering to the existing filesystem consumers.' },
   'packages/ssh/subprocess-ssh': { kind: 'indirect', reason: 'The remote process provider delegates model rendering to Bash, terminal, LSP and ptc-runtime consumers.' },

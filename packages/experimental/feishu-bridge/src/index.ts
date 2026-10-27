@@ -7,7 +7,7 @@
 
 import { createHash, randomUUID } from 'node:crypto'
 import { isAbsolute } from 'node:path'
-import { Context, Service } from '@deepseek-ai/cordis'
+import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { z as zod } from 'zod'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -18,23 +18,28 @@ import { errorChain } from '@deepseek-ai/dsh-llm'
 import type { ToolCallId } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-permission-presets'
 import { scopeChainOf } from '@deepseek-ai/dsh-scope'
+import { assertNever } from '@deepseek-ai/dsh-util-values'
 import type { Session, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import type { Domain } from '@deepseek-ai/dsh-storage-domain'
 import type {} from '@deepseek-ai/dsh-subprocess'
+import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type { ApprovalOutcome, ApprovalRequest } from '@deepseek-ai/dsh-user-approval'
 import type { AskUserQuestionAnswer, AskUserQuestionAnswerItem, AskUserQuestionItem, AskUserQuestionRequest } from '@deepseek-ai/dsh-user-questions'
-import type {} from '@deepseek-ai/dsh-workspace'
+import type { Workspace } from '@deepseek-ai/dsh-workspace'
 import {
   approvalCard, assistantCard, choiceField, noticeCard, optionValue, questionCard, textField, userPromptCard,
+  WORKSPACE_FIELD, workspaceCard,
 } from './cards.ts'
-import type { ApprovalCardInput, ApprovalCardState, CardLocale, CardToolCall, QuestionCardState } from './cards.ts'
+import type {
+  ApprovalCardInput, ApprovalCardState, CardLocale, CardToolCall, QuestionCardState, WorkspaceCardState, WorkspaceChoice,
+} from './cards.ts'
 import { HELP, parseBridgeCommand } from './commands.ts'
 import { LarkCliTransport } from './lark-cli.ts'
 import { splitMarkdown, truncate } from './markdown.ts'
 import type {
-  FeishuCard, FeishuCardAction, FeishuChatBinding, FeishuChatId, FeishuInbound, FeishuInboundMessage, FeishuMessageId, FeishuOpenId,
-  FeishuTransport,
+  FeishuCard, FeishuCardAction, FeishuChatBinding, FeishuChatId, FeishuChatSummary, FeishuConnectRequest, FeishuInbound,
+  FeishuInboundMessage, FeishuMessageId, FeishuOpenId, FeishuSeenChat, FeishuSessionStatus, FeishuTransport,
 } from './types.ts'
 
 export type * from './types.ts'
@@ -58,8 +63,11 @@ export interface Config {
   allowedUsers: string[]
   /** Chats (`oc_…`) the bridge serves; omitted or empty serves every chat an allowed user writes in. */
   allowedChats?: string[]
-  /** Absolute directory of the Workspace that Sessions created from Feishu join. */
-  workspacePath: string
+  /**
+   * Absolute directory of the Workspace that Sessions created from Feishu join without asking. Omitted, a chat
+   * without a Session gets a card to choose one of the registered Workspaces.
+   */
+  workspacePath?: string
   /** Agent preset for Sessions created from Feishu; omitted uses the deployment default. */
   agentPreset?: string
   /** Permission preset applied to Sessions created from Feishu; omitted keeps the deployment default. */
@@ -88,7 +96,7 @@ export interface Config {
   restartDelayMs?: number
 }
 
-type ResolvedConfig = Required<Omit<Config, 'profile' | 'allowedChats' | 'agentPreset' | 'permissionPreset'>> & Config
+type ResolvedConfig = Required<Omit<Config, 'profile' | 'allowedChats' | 'workspacePath' | 'agentPreset' | 'permissionPreset'>> & Config
 
 /** Replaceable integrations for tests. */
 export interface FeishuBridgeInternals {
@@ -97,12 +105,14 @@ export interface FeishuBridgeInternals {
 }
 
 const bindingSchema = zod.object({ sessionId: zod.string(), boundAt: zod.string(), boundBy: zod.string() })
+const seenSchema = zod.object({ chatType: zod.enum(['p2p', 'group']), name: zod.string().nullable(), lastSeenAt: zod.string() })
 
 const bridgeDomain = defineDomain({
   name: 'feishu_bridge',
   version: 1,
   tables: {
     chats: domainTable<string, FeishuChatBinding>(bindingSchema),
+    seen: domainTable<string, FeishuSeenChat>(seenSchema),
   },
 })
 
@@ -131,7 +141,26 @@ interface PendingQuestion {
   readonly callId: ToolCallId | undefined
 }
 
-type PendingInteraction = PendingApproval | PendingQuestion
+/** A message that arrived before its chat had a Session, delivered once one starts. */
+interface StashedMessage {
+  readonly messageId: FeishuMessageId
+  readonly text: string
+}
+
+/** A workspace picker card waiting for its form. */
+interface PendingWorkspace {
+  readonly kind: 'workspace'
+  readonly chatId: FeishuChatId
+  readonly choices: readonly WorkspaceChoice[]
+  /** The card as sent, re-rendered with an error after an empty submission. */
+  readonly card: Extract<WorkspaceCardState, { kind: 'pending' }>
+  readonly stashed: StashedMessage | undefined
+}
+
+type PendingInteraction = PendingApproval | PendingQuestion | PendingWorkspace
+
+/** The Web client's `boundBy` marker. */
+const WEB_BINDER = 'web'
 
 /** Remembers the most recent delivery ids, forgetting the oldest beyond a fixed count. */
 class DeliveryMemory {
@@ -156,8 +185,10 @@ function idempotencyKey(...parts: readonly string[]): string {
 /**
  * The Feishu bridge service. Chats bind to Sessions durably in the
  * `feishu_bridge` storage domain; one Session is bound to at most one chat.
+ * The `feishuBridge` Remote namespace lets the Web client connect the open
+ * Session to a chat in which an allowed user wrote to the bot.
  */
-export class FeishuBridge extends Service {
+export class FeishuBridge extends TypertRemoteService {
   static inject = ['agents', 'sessionController', 'storageDomain', 'subprocess', 'workspaceRegistry']
 
   static Config: z<Config> = z.object({
@@ -165,7 +196,7 @@ export class FeishuBridge extends Service {
     profile: z.string(),
     allowedUsers: z.array(z.string()).required(),
     allowedChats: z.array(z.string()),
-    workspacePath: z.string().required(),
+    workspacePath: z.string(),
     agentPreset: z.string(),
     permissionPreset: z.string(),
     locale: z.union(['zh', 'en'] as const).default('zh'),
@@ -188,6 +219,9 @@ export class FeishuBridge extends Service {
   private readonly lifetime = new AbortController()
   private readonly domain: Promise<Domain<typeof bridgeDomain>>
   private readonly bindings = new Map<FeishuChatId, FeishuChatBinding>()
+  private readonly seen = new Map<FeishuChatId, FeishuSeenChat>()
+  /** Chats whose name was read, or tried, in this process. */
+  private readonly named = new Set<FeishuChatId>()
   private readonly queues = new Map<FeishuChatId, Promise<void>>()
   private readonly pending = new Map<FeishuMessageId, PendingInteraction>()
   private readonly toolCalls = new Map<SessionId, Map<string, CardToolCall>>()
@@ -199,7 +233,7 @@ export class FeishuBridge extends Service {
    * @param internals - replaceable transport for tests.
    */
   constructor(ctx: Context, config: Config, internals: FeishuBridgeInternals = {}) {
-    super(ctx, 'feishuBridge')
+    super(ctx, 'feishuBridge', { namespace: 'feishuBridge' })
     this.config = config as ResolvedConfig
     if (this.config.allowedUsers.length === 0 || this.config.allowedUsers.some(id => !/^ou_\w+$/.test(id))) {
       throw new Error('feishu-bridge: allowedUsers must list at least one Feishu open_id (ou_…)')
@@ -207,7 +241,9 @@ export class FeishuBridge extends Service {
     if (this.config.allowedChats?.some(id => !/^oc_\w+$/.test(id)) === true) {
       throw new Error('feishu-bridge: allowedChats must list Feishu chat ids (oc_…)')
     }
-    if (!isAbsolute(this.config.workspacePath)) throw new Error('feishu-bridge: workspacePath must be an absolute directory')
+    if (this.config.workspacePath !== undefined && !isAbsolute(this.config.workspacePath)) {
+      throw new Error('feishu-bridge: workspacePath must be an absolute directory')
+    }
     for (const field of POSITIVE_FIELDS) {
       if (!Number.isSafeInteger(this.config[field]) || this.config[field] <= 0) {
         throw new Error(`feishu-bridge: ${field} must be a positive integer`)
@@ -231,6 +267,7 @@ export class FeishuBridge extends Service {
     ctx.effect(() => {
       const consumption = this.domain.then((domain) => {
         for (const [chatId, binding] of domain.table('chats').entries()) this.bindings.set(brandString<FeishuChatId>(chatId), binding)
+        for (const [chatId, chat] of domain.table('seen').entries()) this.seen.set(brandString<FeishuChatId>(chatId), chat)
         return this.transport.consume((event) => { this.receive(event) }, this.lifetime.signal)
       })
       const stopped = consumption.catch((error: unknown) => {
@@ -245,7 +282,7 @@ export class FeishuBridge extends Service {
         const domain = await Promise.allSettled([this.domain])
         if (domain[0].status === 'fulfilled') await domain[0].value.close()
       }
-    }, 'feishu-bridge: load bindings, consume Feishu events; release pending prompts and close the domain on disposal')
+    }, 'feishu-bridge: load bindings and chats, consume Feishu events; release pending prompts and close the domain on disposal')
 
     ctx.on('session/event', (session, event) => { this.forward(session, event) })
     // A bound chat owns its Session's prompts, so these answerers run before
@@ -278,10 +315,10 @@ export class FeishuBridge extends Service {
    * Bind a chat to a Session, replacing the chat's previous binding.
    * @param chatId - Feishu chat.
    * @param sessionId - Session the chat drives from now on.
-   * @param operator - Feishu user who asked for the binding.
+   * @param operator - Feishu user who asked for the binding, or `web` for the Web client.
    * @throws when the Session is bound to another chat.
    */
-  async bind(chatId: FeishuChatId, sessionId: SessionId, operator: FeishuOpenId): Promise<void> {
+  async bind(chatId: FeishuChatId, sessionId: SessionId, operator: FeishuOpenId | 'web'): Promise<void> {
     const owner = this.chatOf(sessionId)
     if (owner !== undefined && owner !== chatId) throw new Error(`Session ${sessionId} is bound to another chat; unbind it there first`)
     const binding: FeishuChatBinding = { sessionId, boundAt: new Date().toISOString(), boundBy: operator }
@@ -298,6 +335,104 @@ export class FeishuBridge extends Service {
     const removed = await (await this.domain).table('chats').delete(chatId)
     this.bindings.delete(chatId)
     return removed
+  }
+
+  /**
+   * Read a Session's Feishu connection and the chats it can connect to.
+   * @param agent - Session owner supplied by the Gateway.
+   * @returns the bound chat and the served chats in which an allowed user wrote to the bot.
+   */
+  @Remote
+  status(agent: Agent): FeishuSessionStatus {
+    const chatId = this.chatOf(agent.session.id)
+    const seenAt = (id: FeishuChatId): string => this.seen.get(id)?.lastSeenAt ?? ''
+    const chats = [...new Set([...this.seen.keys(), ...this.bindings.keys()])]
+      .filter(id => this.serves(id))
+      .sort((left, right) => seenAt(right).localeCompare(seenAt(left)))
+      .map(id => this.summary(id))
+    return { chat: chatId === undefined ? null : this.summary(chatId), chats }
+  }
+
+  /**
+   * Connect a Session to a chat from the Web client. The Session's previous chat and the chat's previous Session are
+   * disconnected, and both chats are told.
+   * @param agent - Session owner supplied by the Gateway.
+   * @param request - the chat, one listed by {@link FeishuBridge.status}.
+   * @returns the Session's connection afterwards.
+   * @throws when the chat is not served or no allowed user wrote in it.
+   */
+  @Remote
+  async connect(agent: Agent, request: FeishuConnectRequest): Promise<FeishuSessionStatus> {
+    const sessionId = agent.session.id
+    const chatId = request.chatId
+    if (!this.serves(chatId) || (!this.seen.has(chatId) && !this.bindings.has(chatId))) {
+      throw new Error(`Feishu chat ${chatId} is not available; an allowed user must first write to the bot there`)
+    }
+    const previous = this.chatOf(sessionId)
+    if (previous === chatId) return this.status(agent)
+    if (previous !== undefined) {
+      await this.unbind(previous)
+      this.notify(previous, this.text(
+        `这个聊天已断开会话 \`${sessionId}\`：它在 Web 中改为连接另一个聊天。`,
+        `This chat was disconnected from Session \`${sessionId}\`, which was connected to another chat in the Web client.`,
+      ))
+    }
+    await this.bind(chatId, sessionId, WEB_BINDER)
+    const workspace = this.workspaceOf(sessionId)
+    this.notify(chatId, this.text(
+      `已在 Web 中把这个聊天连接到会话 \`${sessionId}\`${workspace === undefined ? '' : `（工作区 **${workspace.title}** \`${workspace.path}\`）`}。`,
+      `The Web client connected this chat to Session \`${sessionId}\`${workspace === undefined ? '' : ` in workspace **${workspace.title}** \`${workspace.path}\``}.`,
+    ))
+    return this.status(agent)
+  }
+
+  /**
+   * Disconnect a Session from its chat from the Web client, and tell the chat.
+   * @param agent - Session owner supplied by the Gateway.
+   * @returns the Session's connection afterwards.
+   */
+  @Remote
+  async disconnect(agent: Agent): Promise<FeishuSessionStatus> {
+    const chatId = this.chatOf(agent.session.id)
+    if (chatId !== undefined) {
+      await this.unbind(chatId)
+      this.notify(chatId, this.text(
+        `已在 Web 中断开这个聊天和会话 \`${agent.session.id}\` 的连接。下一条消息会创建新会话。`,
+        `The Web client disconnected this chat from Session \`${agent.session.id}\`. The next message starts a new Session.`,
+      ))
+    }
+    return this.status(agent)
+  }
+
+  /** One chat as the Web client lists it. */
+  private summary(chatId: FeishuChatId): FeishuChatSummary {
+    const seen = this.seen.get(chatId)
+    const binding = this.bindings.get(chatId)
+    return {
+      chatId,
+      chatType: seen?.chatType ?? 'group',
+      name: seen?.name ?? null,
+      sessionId: binding === undefined ? null : brandString<SessionId>(binding.sessionId),
+    }
+  }
+
+  /** The registered Workspace a Session belongs to. */
+  private workspaceOf(sessionId: SessionId): Workspace | undefined {
+    return this.ctx.workspaceRegistry.list().find(workspace => workspace.sessionIds.includes(sessionId))
+  }
+
+  /** Remember a chat an allowed user wrote in, reading an unnamed group's name once per process. */
+  private async remember(message: FeishuInboundMessage): Promise<void> {
+    const chatId = message.chatId
+    const lastSeenAt = new Date().toISOString()
+    let name = this.seen.get(chatId)?.name ?? null
+    if (name === null && message.chatType === 'group' && !this.named.has(chatId)) {
+      this.named.add(chatId)
+      name = await this.transport.chatName(chatId, this.lifetime.signal) ?? null
+    }
+    const chat: FeishuSeenChat = { chatType: message.chatType, name, lastSeenAt }
+    this.seen.set(chatId, chat)
+    await (await this.domain).table('seen').put(chatId, chat)
   }
 
   /** Handle one inbound event; failures are reported to the chat or logged. */
@@ -327,6 +462,9 @@ export class FeishuBridge extends Service {
       }
       return
     }
+    this.remember(message).catch((error: unknown) => {
+      this.ctx.logger.warn(`feishu-bridge: could not remember chat ${message.chatId}: ${errorChain(error)}`)
+    })
     const text = message.text.trim()
     if (text === '') return
     const command = parseBridgeCommand(text)
@@ -334,27 +472,62 @@ export class FeishuBridge extends Service {
       await this.runBridgeCommand(message, command.name, command.argument)
       return
     }
-    const sessionId = this.sessionOf(message.chatId) ?? await this.createSession(message.chatId, message.senderId)
-    if (/^\/[a-z0-9_-]+(?:\s|$)/.test(text)) {
-      await this.runSessionCommand(message, sessionId, text)
+    const bound = this.sessionOf(message.chatId)
+    if (bound !== undefined) {
+      await this.deliver(message.chatId, bound, { messageId: message.messageId, text })
+      return
+    }
+    if (this.config.workspacePath === undefined) {
+      await this.offerWorkspaces(message.chatId, { messageId: message.messageId, text })
+      return
+    }
+    const workspace = await this.ctx.workspaceRegistry.create(this.config.workspacePath)
+    const sessionId = await this.createSession(message.chatId, message.senderId, workspace)
+    await this.deliver(message.chatId, sessionId, { messageId: message.messageId, text })
+  }
+
+  /** Send one chat message to a Session: a slash line runs as a Session command, anything else is a prompt. */
+  private async deliver(chatId: FeishuChatId, sessionId: SessionId, message: StashedMessage): Promise<void> {
+    if (/^\/[a-z0-9_-]+(?:\s|$)/.test(message.text)) {
+      await this.runSessionCommand(chatId, sessionId, message.text)
       return
     }
     await this.ctx.sessionController.prompt({
       requestId: brandString<SessionRequestId>(`feishu-${message.messageId}`),
       sessionId,
       mode: 'queue',
-      content: [{ type: 'text', text }],
+      content: [{ type: 'text', text: message.text }],
     }, this.lifetime.signal)
   }
 
-  /** Create a Session in the configured Workspace and bind the chat to it. */
-  private async createSession(chatId: FeishuChatId, operator: FeishuOpenId): Promise<SessionId> {
+  /**
+   * Send a card to choose the Workspace of a new Session, or tell the chat how to add one when none is registered.
+   * @param stashed - message to deliver once the Session starts.
+   */
+  private async offerWorkspaces(chatId: FeishuChatId, stashed?: StashedMessage): Promise<void> {
+    const choices: WorkspaceChoice[] = this.ctx.workspaceRegistry.list().map(({ id, title, path }) => ({ id, title, path }))
+    if (choices.length === 0) {
+      this.notify(chatId, this.text(
+        '还没有工作区。请先在 Web 中打开一个工作区，或发送 `/new <绝对路径>`。',
+        'There is no workspace yet. Open one in the Web client first, or send `/new <absolute path>`.',
+      ), 'error')
+      return
+    }
+    const bound = this.sessionOf(chatId)
+    const preferred = (bound === undefined ? undefined : this.workspaceOf(bound))?.path ?? this.config.workspacePath
+    const selectedId = choices.find(choice => choice.path === preferred)?.id
+    const card: PendingWorkspace['card'] = { kind: 'pending', ...selectedId === undefined ? {} : { selectedId }, stashed: stashed !== undefined }
+    const messageId = await this.send(chatId, workspaceCard(this.config.locale, choices, card), randomUUID())
+    this.pending.set(messageId, { kind: 'workspace', chatId, choices, card, stashed })
+  }
+
+  /** Create a Session in a Workspace and bind the chat to it. */
+  private async createSession(chatId: FeishuChatId, operator: FeishuOpenId, workspace: Workspace): Promise<SessionId> {
     const presets = this.ctx.get('permissionPresets')
     if (this.config.permissionPreset !== undefined) {
       if (presets === undefined) throw new Error('feishu-bridge: permissionPreset is configured but no permission presets service is mounted')
       presets.resolve(this.config.permissionPreset)
     }
-    const workspace = await this.ctx.workspaceRegistry.create(this.config.workspacePath)
     const request: SessionCreateRequest = {
       workspaceId: workspace.id,
       ...this.config.agentPreset === undefined ? {} : { agentPreset: this.config.agentPreset },
@@ -364,7 +537,10 @@ export class FeishuBridge extends Service {
       presets.set((await this.agentOf(sessionId)).session, this.config.permissionPreset)
     }
     await this.bind(chatId, sessionId, operator)
-    this.notify(chatId, this.text(`已创建新会话 \`${sessionId}\`。`, `Started Session \`${sessionId}\`.`))
+    this.notify(chatId, this.text(
+      `已在工作区 **${workspace.title}** \`${workspace.path}\` 创建新会话 \`${sessionId}\`。`,
+      `Started Session \`${sessionId}\` in workspace **${workspace.title}** \`${workspace.path}\`.`,
+    ))
     return sessionId
   }
 
@@ -385,9 +561,21 @@ export class FeishuBridge extends Service {
         this.notify(chatId, [HELP[this.config.locale], ...extra.length === 0 ? [] : ['', this.text('**会话命令**', '**Session commands**'), ...extra]].join('\n'))
         return
       }
-      case 'new':
-        await this.createSession(chatId, message.senderId)
+      case 'new': {
+        const path = argument.trim()
+        // A bare /new asks, unless the configured directory is the only place a Session can start.
+        const directory = path === '' ? this.config.workspacePath : path
+        if (directory === undefined || (path === '' && this.ctx.workspaceRegistry.list().length > 0)) {
+          await this.offerWorkspaces(chatId)
+          return
+        }
+        if (!isAbsolute(directory)) {
+          this.notify(chatId, this.text('用法：`/new` 或 `/new <绝对路径>`', 'Usage: `/new` or `/new <absolute path>`'), 'error')
+          return
+        }
+        await this.createSession(chatId, message.senderId, await this.ctx.workspaceRegistry.create(directory))
         return
+      }
       case 'bind': {
         const target = argument.trim()
         if (target === '') {
@@ -419,10 +607,11 @@ export class FeishuBridge extends Service {
           return
         }
         const agent = this.ctx.agents.get(bound)
+        const workspace = this.workspaceOf(bound)
         this.notify(chatId, [
           `**Session** \`${bound}\``,
           `**${this.text('状态', 'Status')}** ${agent?.status ?? this.text('未加载', 'not loaded')}`,
-          `**Workspace** \`${this.config.workspacePath}\``,
+          ...workspace === undefined ? [] : [`**${this.text('工作区', 'Workspace')}** ${workspace.title} \`${workspace.path}\``],
         ].join('\n'))
         return
       }
@@ -433,17 +622,17 @@ export class FeishuBridge extends Service {
   }
 
   /** Run a Session slash command through the commands service and post its result. */
-  private async runSessionCommand(message: FeishuInboundMessage, sessionId: SessionId, line: string): Promise<void> {
+  private async runSessionCommand(chatId: FeishuChatId, sessionId: SessionId, line: string): Promise<void> {
     const commands = this.ctx.get('commands')
     const execution = commands === undefined
       ? undefined
       : await commands.execute(await this.agentOf(sessionId), line, [], this.lifetime.signal)
     if (execution === undefined) {
-      this.notify(message.chatId, this.text('未知命令。发送 `/help` 查看可用命令。', 'Unknown command. Send `/help` for the available commands.'), 'error')
+      this.notify(chatId, this.text('未知命令。发送 `/help` 查看可用命令。', 'Unknown command. Send `/help` for the available commands.'), 'error')
       return
     }
     const { result } = execution
-    this.notify(message.chatId, result.text ?? (result.kind === 'success' ? '✅' : '❌'), result.kind === 'error' ? 'error' : 'info')
+    this.notify(chatId, result.text ?? (result.kind === 'success' ? '✅' : '❌'), result.kind === 'error' ? 'error' : 'info')
   }
 
   private async receiveAction(action: FeishuCardAction): Promise<void> {
@@ -459,6 +648,10 @@ export class FeishuBridge extends Service {
       if (decision !== 'allow' && decision !== 'reject') return
       this.pending.delete(action.messageId)
       interaction.settle(decision === 'allow' ? 'allowed-once' : 'rejected', action.operatorId)
+      return
+    }
+    if (interaction.kind === 'workspace') {
+      await this.chooseWorkspace(action, interaction)
       return
     }
     if (action.formValue === undefined) return
@@ -481,6 +674,24 @@ export class FeishuBridge extends Service {
       }
     }
     await this.updateCard(action.messageId, questionCard(this.config.locale, interaction.questions, state))
+  }
+
+  /** Start a Session in the Workspace a picker card submitted, then deliver the message that waited for it. */
+  private async chooseWorkspace(action: FeishuCardAction, interaction: PendingWorkspace): Promise<void> {
+    const chosen = action.formValue?.[WORKSPACE_FIELD]
+    const workspace = typeof chosen === 'string' && interaction.choices.some(choice => choice.id === chosen)
+      ? this.ctx.workspaceRegistry.list().find(item => item.id === chosen)
+      : undefined
+    if (workspace === undefined) {
+      await this.updateCard(action.messageId, workspaceCard(this.config.locale, interaction.choices, { ...interaction.card, error: true }))
+      return
+    }
+    this.pending.delete(action.messageId)
+    const sessionId = await this.createSession(action.chatId, action.operatorId, workspace)
+    await this.updateCard(action.messageId, workspaceCard(this.config.locale, interaction.choices, {
+      kind: 'started', workspace: { id: workspace.id, title: workspace.title, path: workspace.path }, sessionId, operator: action.operatorId,
+    }))
+    if (interaction.stashed !== undefined) await this.deliver(action.chatId, sessionId, interaction.stashed)
   }
 
   /** The bound chat of an Agent or its nearest bound ancestor. */
@@ -576,10 +787,21 @@ export class FeishuBridge extends Service {
     return answered.promise
   }
 
-  /** Settle a pending interaction when the bridge stops: approvals fail closed and questions abort. */
+  /** Settle a pending interaction when the bridge stops: approvals fail closed, questions abort, and pickers lapse. */
   private release(interaction: PendingInteraction): void {
-    if (interaction.kind === 'approval') interaction.settle('unavailable')
-    else interaction.abandon(new Error('feishu-bridge stopped before the question was answered'))
+    switch (interaction.kind) {
+      case 'approval':
+        interaction.settle('unavailable')
+        return
+      case 'question':
+        interaction.abandon(new Error('feishu-bridge stopped before the question was answered'))
+        return
+      case 'workspace':
+        return
+      /* v8 ignore next 2 -- closed union. */
+      default:
+        assertNever(interaction, 'pending interaction')
+    }
   }
 
   /** Forward one committed event of a bound Session to its chat. */

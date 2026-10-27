@@ -25,20 +25,20 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-安装 lark-cli，并登录一个带机器人的飞书应用（`lark-cli config init`）。在应用的开发者后台为机器人订阅 `im.message.receive_v1` 和卡片回调（`card.action.trigger`），授予发送和更新消息的权限，并把机器人加入需要服务的聊天。[`feishu.patch.yml`](feishu.patch.yml) 会把桥接插件挂载到 Web 配置：填好 open_id 和工作目录后，执行 `pnpm dsh web --patch packages/experimental/feishu-bridge/feishu.patch.yml`。
+安装 lark-cli，并登录一个带机器人的飞书应用（`lark-cli config init`）。在应用的开发者后台为机器人订阅 `im.message.receive_v1` 和卡片回调（`card.action.trigger`），授予发送和更新消息的权限，并把机器人加入需要服务的聊天。[`feishu.patch.yml`](feishu.patch.yml) 会把桥接插件及其 Web 按钮（[`client-ui-feishu-bridge`](../client-ui-feishu-bridge/README.zh.md)）挂载到 Web 配置：填好 open_id 后，执行 `pnpm dsh web --patch packages/experimental/feishu-bridge/feishu.patch.yml`。
 
 ```yaml
 - name: '@deepseek-ai/dsh-experimental-feishu-bridge'
   config:
     allowedUsers: [ou_xxx]
-    workspacePath: /home/me/project
     permissionPreset: ask
+- name: '@deepseek-ai/dsh-experimental-client-ui-feishu-bridge'
 ```
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
 | `allowedUsers` | 必填 | 可以向会话发送提示和操作卡片的飞书 open_id（`ou_…`）；其他人私聊机器人时会收到自己的 open_id |
-| `workspacePath` | 必填 | 从飞书新建的会话所用工作区的绝对路径 |
+| `workspacePath` | 无 | 从飞书新建的会话所用工作区的绝对路径；不设置时，由聊天从已注册的工作区中选择 |
 | `allowedChats` | 所有聊天 | 桥接服务的聊天 ID（`oc_…`） |
 | `command` | `lark-cli` | `PATH` 中的可执行文件名或绝对路径 |
 | `profile` | 当前 profile | 作为 `--profile` 传给 lark-cli 的 profile |
@@ -56,18 +56,18 @@ kind: "package-reference"
 | `maxOutputBytes` | `1048576` | 单次 lark-cli 调用每个输出流捕获的字节数 |
 | `restartDelayMs` | `5000` | 事件消费进程退出后重启前的等待时间 |
 
-在聊天中，第一条消息会在配置的工作区新建会话，并把聊天绑定到该会话。下面的命令控制绑定；其他斜杠命令（例如 `/compact`）在绑定的会话中执行：
+聊天有三种方式绑定到会话。在 Web 客户端中，会话标题栏的**连接飞书**按钮把当前会话（无论它在哪个工作区运行）连接到允许的用户曾在其中给机器人发过消息的聊天。在没有会话的聊天中，设置了 `workspacePath` 时第一条消息会在该目录新建会话；否则机器人回复一张列出已注册工作区的卡片，选中工作区的新会话会收到这条等待中的消息。`/new <绝对路径>` 在任意目录新建会话，并把该目录注册为工作区。下面的命令控制绑定；其他斜杠命令（例如 `/compact`）在绑定的会话中执行：
 
 | 命令 | 作用 |
 |---|---|
 | `/help` | 列出桥接命令和会话命令 |
-| `/new` | 新建会话并把聊天绑定到它 |
+| `/new [绝对路径]` | 新建会话并把聊天绑定到它；不带路径时从卡片选择工作区，除非设置了 `workspacePath` 且没有已注册的工作区 |
 | `/bind <会话 ID>` | 把聊天绑定到已有会话，例如在 Web 客户端开始的会话 |
 | `/unbind` | 解除绑定 |
 | `/stop` | 取消绑定会话的当前回合 |
-| `/status` | 显示绑定的会话及其状态 |
+| `/status` | 显示绑定的会话、其工作区及状态 |
 
-一个会话最多绑定一个聊天；绑定保存在 `feishu_bridge` 存储域中。来自绑定会话或其启动的子 Agent 的权限请求会以带 **允许一次** 和 **拒绝** 按钮的卡片送达。提问以一个表单送达，每个问题对应一个单选或多选框，以及一个自定义答案文本框。限时等待已过期的提问仍可在卡片上作答。只有允许的用户在同一聊天中的点击才会生效，卡片随后会显示作出决定的人。
+一个会话最多绑定一个聊天；绑定以及 Web 按钮列出的聊天保存在 `feishu_bridge` 存储域中。来自绑定会话或其启动的子 Agent 的权限请求会以带 **允许一次** 和 **拒绝** 按钮的卡片送达。提问以一个表单送达，每个问题对应一个单选或多选框，以及一个自定义答案文本框。限时等待已过期的提问仍可在卡片上作答。只有允许的用户在同一聊天中的点击才会生效，卡片随后会显示作出决定的人。
 
 -----
 
@@ -79,16 +79,18 @@ kind: "package-reference"
 
 | 源文件 | 职责 |
 |---|---|
-| [`src/index.ts`](src/index.ts) | 配置、`feishuBridge` 服务、绑定、入站路由、会话事件转发，以及批准和提问的应答器 |
+| [`src/index.ts`](src/index.ts) | 配置、`feishuBridge` 服务和 Remote、绑定、入站路由、工作区选择卡片、会话事件转发，以及批准和提问的应答器 |
 | [`src/lark-cli.ts`](src/lark-cli.ts) | lark-cli 传输：两个 `event consume` 进程，以及消息发送和更新 API |
 | [`src/cards.ts`](src/cards.ts) | 飞书卡片 JSON 2.0 构建函数及其文案 |
 | [`src/markdown.ts`](src/markdown.ts) | 面向卡片文本的 Markdown 适配，以及按卡片大小切分 |
 | [`src/commands.ts`](src/commands.ts) | 桥接命令解析和帮助文本 |
 | [`src/types.ts`](src/types.ts) | 带品牌的飞书 ID、入站事件和 `FeishuTransport` 接口 |
 
-**入站。** `lark-cli event consume im.message.receive_v1 --as bot` 和 `lark-cli event consume card.action.trigger --as bot` 在插件生命周期内持续运行并输出 NDJSON。退出的消费进程会在 `restartDelayMs` 后重启；释放插件时关闭它们的 stdin，这是 lark-cli 的正常停止方式。消息提示通过 `ctx.sessionController.prompt` 发送，请求 ID 为 `feishu-<消息 ID>`，因此重复投递的消息不会重复提示，会话也会把它记录为普通用户消息。
+**入站。** `lark-cli event consume im.message.receive_v1 --as bot` 和 `lark-cli event consume card.action.trigger --as bot` 在插件生命周期内持续运行并输出 NDJSON。退出的消费进程会在 `restartDelayMs` 后重启；释放插件时关闭它们的 stdin，这是 lark-cli 的正常停止方式。消息提示通过 `ctx.sessionController.prompt` 发送，请求 ID 为 `feishu-<消息 ID>`，因此重复投递的消息不会重复提示，会话也会把它记录为普通用户消息。每条允许的消息还会记下所在聊天（群名每个进程读取一次），供 Web 按钮列出。
 
 **出站。** 桥接监听 `session/event`；对已绑定的会话，把 `assistant/message` 转成回复卡片，把其他客户端的 `user/message` 转成带标记的卡片，把失败、停止或被截断的 `turn/end` 转成通知。同一聊天的卡片按顺序发送。每张转发的卡片携带由会话 ID 和事件序号得出的飞书幂等键。
+
+**Web 连接。** 该服务是名为 `feishuBridge` 的 Typert Remote：`status`、`connect` 和 `disconnect` 作用于调用方客户端的会话。连接会把聊天从其他会话移过来，绑定变化的每个聊天都会收到通知。
 
 **提示。** `approval/request` 和 `user-questions/request` 应答器以 `prepend` 注册，因此先于 Web 客户端的应答器运行。没有绑定聊天的会话的请求，以及卡片无法发送的请求，会交给下一个应答器。释放插件时，未决的批准结算为 `unavailable`，等待中的提问被拒绝。
 

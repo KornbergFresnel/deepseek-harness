@@ -92,6 +92,7 @@ kind: "package-group"
 | [`git-branch`](git-branch/README.zh.md) | 会话工作目录的当前分支和分支切换 | `ctx.gitBranch` |
 | [`client-ui-git-branch`](client-ui-git-branch/README.zh.md) | 新会话页面的 Git 分支按钮 | — |
 | [`feishu-bridge`](feishu-bridge/README.zh.md) | 通过 lark-cli 把飞书聊天绑定到工作区会话，并在卡片中处理批准和提问 | `ctx.feishuBridge` |
+| [`client-ui-feishu-bridge`](client-ui-feishu-bridge/README.zh.md) | 会话标题栏里把当前会话连接到飞书聊天的按钮 | — |
 
 -----
 

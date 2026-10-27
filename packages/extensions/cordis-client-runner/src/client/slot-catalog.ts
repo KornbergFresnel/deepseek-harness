@@ -1885,6 +1885,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     occupants: [
       'client-ui-open-in-app SessionOpenInAppAction id \'open-in-app\'',
       'client-ui-schedule ScheduleCatalogAction id \'schedule-catalog\'',
+      'experimental-client-ui-feishu-bridge FeishuChip',
       'session-log-export SessionLogDownloadHeaderAction id \'session-log-download\'',
     ],
     replaceRisk: 'none',

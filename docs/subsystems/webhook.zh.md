@@ -52,7 +52,7 @@ Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnp
 
 ### `ctx.feishuBridge` — `FeishuBridge`
 
-The Feishu bridge service. Chats bind to Sessions durably in the `feishu_bridge` storage domain; one Session is bound to at most one chat.
+The Feishu bridge service. Chats bind to Sessions durably in the `feishu_bridge` storage domain; one Session is bound to at most one chat. The `feishuBridge` Remote namespace lets the Web client connect the open Session to a chat in which an allowed user wrote to the bot.
 
 ```ts cordis-catalog
 /**
@@ -73,10 +73,10 @@ sessionOf(chatId: FeishuChatId): SessionId | undefined
  * Bind a chat to a Session, replacing the chat's previous binding.
  * @param chatId - Feishu chat.
  * @param sessionId - Session the chat drives from now on.
- * @param operator - Feishu user who asked for the binding.
+ * @param operator - Feishu user who asked for the binding, or `web` for the Web client.
  * @throws when the Session is bound to another chat.
  */
-async bind(chatId: FeishuChatId, sessionId: SessionId, operator: FeishuOpenId): Promise<void>
+async bind(chatId: FeishuChatId, sessionId: SessionId, operator: FeishuOpenId | 'web'): Promise<void>
 
 /**
  * Remove a chat's binding.
@@ -84,9 +84,33 @@ async bind(chatId: FeishuChatId, sessionId: SessionId, operator: FeishuOpenId): 
  * @returns whether the chat was bound.
  */
 async unbind(chatId: FeishuChatId): Promise<boolean>
+
+/**
+ * Read a Session's Feishu connection and the chats it can connect to.
+ * @param agent - Session owner supplied by the Gateway.
+ * @returns the bound chat and the served chats in which an allowed user wrote to the bot.
+ */
+@Remote status(agent: Agent): FeishuSessionStatus
+
+/**
+ * Connect a Session to a chat from the Web client. The Session's previous chat and the chat's previous Session are
+ * disconnected, and both chats are told.
+ * @param agent - Session owner supplied by the Gateway.
+ * @param request - the chat, one listed by {@link FeishuBridge.status}.
+ * @returns the Session's connection afterwards.
+ * @throws when the chat is not served or no allowed user wrote in it.
+ */
+@Remote async connect(agent: Agent, request: FeishuConnectRequest): Promise<FeishuSessionStatus>
+
+/**
+ * Disconnect a Session from its chat from the Web client, and tell the chat.
+ * @param agent - Session owner supplied by the Gateway.
+ * @returns the Session's connection afterwards.
+ */
+@Remote async disconnect(agent: Agent): Promise<FeishuSessionStatus>
 ```
 
-Types: [SessionId](core.zh.md)
+Types: [Agent](core.zh.md) · [SessionId](core.zh.md)
 
 Source: [`packages/experimental/feishu-bridge/src/index.ts`](../../packages/experimental/feishu-bridge/src/index.ts)
 

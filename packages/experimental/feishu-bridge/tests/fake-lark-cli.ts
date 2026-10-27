@@ -6,7 +6,8 @@ import { join } from 'node:path'
  * Node script standing in for lark-cli. `event consume <key>` prints
  * `events-<key>.ndjson`, then exits with stderr when `exit-<key>` exists
  * (removing it, so the restarted consumer stays up) or waits for stdin to
- * close. `api` records its stdin body and answers from the control files.
+ * close. `api` records its stdin body and answers from the control files; a
+ * `GET` answers a chat lookup from `chat-api`, or with the name `Research`.
  */
 const SCRIPT = String.raw`#!/usr/bin/env node
 const fs = require('node:fs')
@@ -30,7 +31,11 @@ if (argv.includes('event')) {
 let body = ''
 process.stdin.on('data', chunk => { body += chunk })
 process.stdin.on('end', () => {
-  record({ argv, body: JSON.parse(body) })
+  record(body === '' ? { argv } : { argv, body: JSON.parse(body) })
+  if (argv.includes('GET')) {
+    process.stdout.write(exists('chat-api') ? fs.readFileSync(join(__dirname, 'chat-api'), 'utf8') : JSON.stringify({ ok: true, data: { name: 'Research' } }))
+    return
+  }
   if (exists('fail-api')) { process.stderr.write('{"ok":false,"error":{"type":"api","message":"denied"}}\n'); process.exit(1) }
   if (exists('fail-api-quiet')) { process.stdout.write('quota exceeded'); process.exit(2) }
   if (exists('garbage-api')) { process.stdout.write('not json'); return }

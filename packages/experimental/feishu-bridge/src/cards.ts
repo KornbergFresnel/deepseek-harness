@@ -32,6 +32,12 @@ const COPY = {
     toolCalls: 'Tool calls',
     fromOther: 'Prompt sent from another client',
     part: 'Part',
+    workspaceTitle: 'Choose a workspace',
+    workspacePrompt: 'Choose the workspace of the new Session.',
+    workspacePending: 'Your message is sent to the new Session once it starts.',
+    createSession: 'Start Session',
+    chooseWorkspace: 'Choose a workspace before starting.',
+    startedIn: 'Started Session',
   },
   zh: {
     permissionTitle: '权限请求',
@@ -56,6 +62,12 @@ const COPY = {
     toolCalls: '工具调用',
     fromOther: '来自其他客户端的消息',
     part: '第',
+    workspaceTitle: '选择工作区',
+    workspacePrompt: '选择新会话使用的工作区。',
+    workspacePending: '会话创建后会把你刚才的消息发给它。',
+    createSession: '创建会话',
+    chooseWorkspace: '请先选择工作区。',
+    startedIn: '已创建会话',
   },
 } as const satisfies Record<CardLocale, Record<string, string>>
 
@@ -354,4 +366,64 @@ function prettyArguments(raw: string): string {
 /** Escape characters the card markdown element reads as markup in a short identifier. */
 function escapeMarkup(text: string): string {
   return text.replace(/[\\`*_~<>[\]]/g, char => `&#${String(char.charCodeAt(0))};`)
+}
+
+/** One workspace offered on a workspace picker card. */
+export interface WorkspaceChoice {
+  /** Workspace record identity, submitted as the option value. */
+  readonly id: string
+  /** Display title. */
+  readonly title: string
+  /** Canonical directory. */
+  readonly path: string
+}
+
+/** State of a workspace picker card. */
+export type WorkspaceCardState =
+  | { readonly kind: 'pending'; readonly selectedId?: string; readonly error?: boolean; readonly stashed?: boolean }
+  | { readonly kind: 'started'; readonly workspace: WorkspaceChoice; readonly sessionId: string; readonly operator: FeishuOpenId }
+
+/** Form field holding the chosen workspace id. */
+export const WORKSPACE_FIELD = 'workspace'
+
+/**
+ * Build a card that starts a Session in a chosen workspace.
+ * @param locale - card language.
+ * @param workspaces - registered workspaces, in offer order.
+ * @param state - pending choice, or the started Session.
+ * @returns the card.
+ */
+export function workspaceCard(locale: CardLocale, workspaces: readonly WorkspaceChoice[], state: WorkspaceCardState): FeishuCard {
+  const elements: unknown[] = []
+  switch (state.kind) {
+    case 'pending': {
+      const form: unknown[] = [markdown(copy(locale, 'workspacePrompt'))]
+      form.push({
+        tag: 'select_static',
+        name: WORKSPACE_FIELD,
+        placeholder: plain(copy(locale, 'choose')),
+        width: 'fill',
+        ...workspaces.some(workspace => workspace.id === state.selectedId) ? { initial_option: state.selectedId } : {},
+        options: workspaces.map(workspace => ({ text: plain(truncate(`${workspace.title} — ${workspace.path}`, 100)), value: workspace.id })),
+      })
+      if (state.stashed === true) form.push(markdown(`<font color='grey'>${copy(locale, 'workspacePending')}</font>`, { text_size: 'notation' }))
+      if (state.error === true) form.push(markdown(`<font color='red'>${copy(locale, 'chooseWorkspace')}</font>`))
+      form.push({ tag: 'button', name: 'submit', text: plain(copy(locale, 'createSession')), type: 'primary_filled', form_action_type: 'submit' })
+      elements.push({ tag: 'form', name: 'workspace', elements: form })
+      break
+    }
+    case 'started':
+      elements.push(markdown([
+        `**${escapeMarkup(state.workspace.title)}** \`${state.workspace.path}\``,
+        `<font color='green'>✅ ${copy(locale, 'startedIn')} \`${state.sessionId}\`</font> <at id=${state.operator}></at>`,
+      ].join('\n')))
+      break
+    /* v8 ignore next 2 -- closed union. */
+    default:
+      return assertNever(state, 'workspace card state')
+  }
+  return card(elements, {
+    header: { title: plain(copy(locale, 'workspaceTitle')), template: state.kind === 'pending' ? 'blue' : 'grey' },
+    summary: copy(locale, 'workspaceTitle'),
+  })
 }

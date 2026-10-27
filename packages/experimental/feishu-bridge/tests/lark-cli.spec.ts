@@ -79,6 +79,17 @@ describe('lark-cli transport', () => {
     await expect(transport.updateCard(brandString<FeishuMessageId>('om_1/../x'), card)).rejects.toThrow('invalid Feishu message id')
   })
 
+  it('reads a group name without a request body and validates the chat id', async () => {
+    const { transport, fake } = await boot()
+    expect(await transport.chatName(CHAT)).toBe('Research')
+    expect((await fake.calls())[0]).toEqual({ argv: ['api', 'GET', '/open-apis/im/v1/chats/oc_chat', '--as', 'bot'] })
+    await fake.control('chat-api', '{"ok":true,"data":{"name":""}}')
+    expect(await transport.chatName(CHAT)).toBeUndefined()
+    await fake.control('chat-api', '{"ok":true,"data":[]}')
+    expect(await transport.chatName(CHAT)).toBeUndefined()
+    await expect(transport.chatName(brandString<FeishuChatId>('oc_1/../x'))).rejects.toThrow('invalid Feishu chat id')
+  })
+
   it('reports failed, non-JSON, and unsuccessful API output', async () => {
     const { transport, fake } = await boot()
     const card = { schema: '2.0' }

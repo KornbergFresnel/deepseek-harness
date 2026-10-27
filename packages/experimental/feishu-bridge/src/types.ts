@@ -1,6 +1,7 @@
 /** Feishu identifiers, inbound events, card values, and the transport the bridge drives. */
 
 import type { Branded } from '@deepseek-ai/dsh-brand'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 
 /** Feishu chat identity (`oc_…`). */
 export type FeishuChatId = Branded<'FeishuChatId'>
@@ -78,6 +79,13 @@ export interface FeishuTransport {
    * @param signal - cancellation.
    */
   updateCard(messageId: FeishuMessageId, card: FeishuCard, signal?: AbortSignal): Promise<void>
+  /**
+   * Read a chat's display name.
+   * @param chatId - chat to read.
+   * @param signal - cancellation.
+   * @returns the group name, or undefined when the chat has none, such as a direct chat.
+   */
+  chatName(chatId: FeishuChatId, signal?: AbortSignal): Promise<string | undefined>
 }
 
 /** The callback value of a permission-request card button. */
@@ -94,4 +102,40 @@ export interface FeishuChatBinding {
   readonly boundAt: string
   /** Feishu user who bound the chat. */
   readonly boundBy: string
+}
+
+/** A chat in which an allowed user wrote to the bot, remembered so the Web client can offer it. */
+export interface FeishuSeenChat {
+  /** `p2p` for a direct chat with the bot. */
+  readonly chatType: 'p2p' | 'group'
+  /** Group name; null when unknown or for a direct chat. */
+  readonly name: string | null
+  /** ISO time an allowed user last wrote in the chat. */
+  readonly lastSeenAt: string
+}
+
+/** One chat the Web client can connect a Session to. */
+export interface FeishuChatSummary {
+  /** Chat identity. */
+  chatId: FeishuChatId
+  /** `p2p` for a direct chat with the bot. */
+  chatType: 'p2p' | 'group'
+  /** Group name; null when unknown or for a direct chat. */
+  name: string | null
+  /** Session the chat drives; null when the chat is not bound. */
+  sessionId: SessionId | null
+}
+
+/** A Session's Feishu connection, as the Web client shows it. */
+export interface FeishuSessionStatus {
+  /** Chat bound to the Session; null when no chat drives it. */
+  chat: FeishuChatSummary | null
+  /** Chats the Session can connect to, most recently active first. */
+  chats: FeishuChatSummary[]
+}
+
+/** The chat to connect a Session to. */
+export interface FeishuConnectRequest {
+  /** A chat from {@link FeishuSessionStatus.chats}. */
+  chatId: FeishuChatId
 }

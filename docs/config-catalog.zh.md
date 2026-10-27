@@ -1141,7 +1141,7 @@ export type Config = CuaConfig
 ## `@deepseek-ai/dsh-experimental-feishu-bridge`
 
 - `inject`: `agents` · `sessionController` · `storageDomain` · `subprocess` · `workspaceRegistry`
-- `source`: [`packages/experimental/feishu-bridge/src/index.ts:52`](../packages/experimental/feishu-bridge/src/index.ts)
+- `source`: [`packages/experimental/feishu-bridge/src/index.ts:57`](../packages/experimental/feishu-bridge/src/index.ts)
 
 ```ts config-catalog
 /** lark-cli invocation, access control, Session placement, and forwarding policy. */
@@ -1154,8 +1154,11 @@ export interface Config {
   allowedUsers: string[]
   /** Chats (`oc_…`) the bridge serves; omitted or empty serves every chat an allowed user writes in. */
   allowedChats?: string[]
-  /** Absolute directory of the Workspace that Sessions created from Feishu join. */
-  workspacePath: string
+  /**
+   * Absolute directory of the Workspace that Sessions created from Feishu join without asking. Omitted, a chat
+   * without a Session gets a card to choose one of the registered Workspaces.
+   */
+  workspacePath?: string
   /** Agent preset for Sessions created from Feishu; omitted uses the deployment default. */
   agentPreset?: string
   /** Permission preset applied to Sessions created from Feishu; omitted keeps the deployment default. */
@@ -4954,6 +4957,7 @@ export interface Config {
 | `@deepseek-ai/dsh-experimental-client-ui-agent-team` | — | [`packages/experimental/client-ui-agent-team/src/index.ts`](../packages/experimental/client-ui-agent-team/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-client-ui-claude-code-mods` | — | [`packages/experimental/client-ui-claude-code-mods/src/index.ts`](../packages/experimental/client-ui-claude-code-mods/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-client-ui-cluster-monitor` | — | [`packages/experimental/client-ui-cluster-monitor/src/index.ts`](../packages/experimental/client-ui-cluster-monitor/src/index.ts) |
+| `@deepseek-ai/dsh-experimental-client-ui-feishu-bridge` | — | [`packages/experimental/client-ui-feishu-bridge/src/index.ts`](../packages/experimental/client-ui-feishu-bridge/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-client-ui-git-branch` | — | [`packages/experimental/client-ui-git-branch/src/index.ts`](../packages/experimental/client-ui-git-branch/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-client-ui-voice-input` | — | [`packages/experimental/client-ui-voice-input/src/index.ts`](../packages/experimental/client-ui-voice-input/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-computer-use-cua-driver-native` | `computerUse` · `tools` · `systemPrompt` | [`packages/experimental/computer-use-cua-driver-native/src/index.ts`](../packages/experimental/computer-use-cua-driver-native/src/index.ts) |

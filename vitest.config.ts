@@ -337,6 +337,9 @@ export default defineConfig({
         // The branch chip entry imports the generated `gitBranch` Remote contribution, which exists only in lib;
         // source tests cover mountGitBranch.
         'packages/experimental/client-ui-git-branch/src/client/index.ts',
+        // The Feishu chip entry imports the generated `feishuBridge` Remote contribution, which exists only in lib;
+        // source tests cover mountFeishuBridge.
+        'packages/experimental/client-ui-feishu-bridge/src/client/index.ts',
         // The mods band entry imports the bridge's generated Remote contribution, which exists only in lib;
         // the Web snapshot exercises the built entry, while source tests cover mountModsBand.
         'packages/experimental/client-ui-claude-code-mods/src/client/index.ts',

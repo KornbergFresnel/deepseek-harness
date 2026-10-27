@@ -32,6 +32,9 @@ export interface LarkCliOptions {
 /** Message identities embedded in API paths. */
 const MESSAGE_ID = /^om_[A-Za-z0-9_-]+$/
 
+/** Chat identities embedded in API paths. */
+const CHAT_ID = /^oc_[A-Za-z0-9_-]+$/
+
 /** Read a non-empty string field from a parsed event. */
 function stringField(record: Record<string, unknown>, field: string): string | undefined {
   const value = record[field]
@@ -143,6 +146,13 @@ export class LarkCliTransport implements FeishuTransport {
     await this.api('PATCH', `/open-apis/im/v1/messages/${messageId}`, [], { content: JSON.stringify(card) }, signal)
   }
 
+  async chatName(chatId: FeishuChatId, signal?: AbortSignal): Promise<string | undefined> {
+    if (!CHAT_ID.test(chatId)) throw new Error(`invalid Feishu chat id ${JSON.stringify(chatId)}`)
+    const data = await this.api('GET', `/open-apis/im/v1/chats/${chatId}`, [], undefined, signal)
+    const name = isRecord(data) ? data['name'] : undefined
+    return typeof name === 'string' && name !== '' ? name : undefined
+  }
+
   /** The executable and global flags shared by every invocation. */
   private async program(signal: AbortSignal): Promise<string[]> {
     const program = await this.ctx.subprocess.resolveExecutable(this.options.command, undefined, signal)
@@ -221,18 +231,18 @@ export class LarkCliTransport implements FeishuTransport {
     }
   }
 
-  /** Run `lark-cli api <method> <path>` with a JSON body on stdin; returns the success envelope's `data`. */
+  /** Run `lark-cli api <method> <path>`, with a JSON body on stdin when one is given; returns the success envelope's `data`. */
   private async api(
     method: string, path: string, flags: readonly string[], body: unknown, signal: AbortSignal | undefined,
   ): Promise<unknown> {
     using timeout = deadline(signal, this.options.timeoutMs, 'FEISHU_API_TIMEOUT')
     const child = this.ctx.subprocess.spawn({
-      argv: [...await this.program(timeout.signal), 'api', method, path, ...flags, '--data', '-', '--as', 'bot'],
+      argv: [...await this.program(timeout.signal), 'api', method, path, ...flags, ...body === undefined ? [] : ['--data', '-'], '--as', 'bot'],
       cwd: this.cwd,
       signal: timeout.signal,
       graceMs: this.options.graceMs,
       stdio: {
-        stdin: { data: JSON.stringify(body) },
+        stdin: body === undefined ? 'ignore' : { data: JSON.stringify(body) },
         stdout: { maxBytes: this.options.maxOutputBytes },
         stderr: { maxBytes: this.options.maxOutputBytes },
       },

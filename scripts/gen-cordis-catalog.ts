@@ -878,6 +878,8 @@ export const FOUNDATION_TYPE_NAMES: ReadonlySet<string> = new Set([
 export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
   FeishuChatId: 'Feishu identities are owned by packages/experimental/feishu-bridge/src/types.ts',
   FeishuOpenId: 'Feishu identities are owned by packages/experimental/feishu-bridge/src/types.ts',
+  FeishuSessionStatus: 'Web connection types are owned by packages/experimental/feishu-bridge/src/types.ts',
+  FeishuConnectRequest: 'Web connection types are owned by packages/experimental/feishu-bridge/src/types.ts',
   ListScoJobsRequest: 'SSP job records are owned by packages/experimental/sco/src/types.ts',
   ScoWorkspaceRequest: 'SSP job records are owned by packages/experimental/sco/src/types.ts',
   ReadScoJobLogsRequest: 'SSP job records are owned by packages/experimental/sco/src/types.ts',
