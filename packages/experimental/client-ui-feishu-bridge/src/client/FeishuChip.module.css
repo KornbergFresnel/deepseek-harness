@@ -1,0 +1,58 @@
+/* Feishu chip among the Session header utilities. Geometry follows the
+   header's other text controls so the row reads as one set. */
+
+/* The Menu anchor wrapper: its floor keeps the icon visible when a long chat
+   name ellipsizes. */
+.menuAnchor {
+  min-width: 32px;
+  max-width: 100%;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: min(100%, 200px);
+  min-height: 28px;
+  padding: 0 8px;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.chip:not(:disabled):hover,
+.chip[aria-expanded='true'] {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.chip:disabled {
+  cursor: default;
+  color: var(--dsw-alias-label-quaternary);
+}
+
+.connected {
+  color: var(--dsw-alias-label-primary);
+}
+
+.icon {
+  flex: none;
+}
+
+.label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chevron {
+  flex: none;
+  color: var(--dsw-alias-label-caption);
+}

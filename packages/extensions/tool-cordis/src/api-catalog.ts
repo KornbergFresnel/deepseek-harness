@@ -1120,6 +1120,56 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'feishuBridge',
+    summary: 'The Feishu bridge service.',
+    description: 'The Feishu bridge service. Chats bind to Sessions durably in the `feishu_bridge` storage domain; one Session is bound to at most one chat. The `feishuBridge` Remote namespace lets the Web client connect the open Session to a chat in which an allowed user wrote to the bot.',
+    methods: [
+      {
+        signature: 'chatOf(sessionId: SessionId): FeishuChatId | undefined',
+        description: 'The chat bound to a Session.',
+        parameters: [{ name: 'sessionId', description: 'Session identity.' }],
+        returns: 'the chat, or undefined when no chat drives the Session.',
+      },
+      {
+        signature: 'sessionOf(chatId: FeishuChatId): SessionId | undefined',
+        description: 'The Session a chat drives.',
+        parameters: [{ name: 'chatId', description: 'Feishu chat.' }],
+        returns: 'the bound Session, or undefined.',
+      },
+      {
+        signature: 'async bind(chatId: FeishuChatId, sessionId: SessionId, operator: FeishuOpenId | \'web\'): Promise<void>',
+        description: 'Bind a chat to a Session, replacing the chat\'s previous binding.',
+        parameters: [{ name: 'chatId', description: 'Feishu chat.' }, { name: 'sessionId', description: 'Session the chat drives from now on.' }, { name: 'operator', description: 'Feishu user who asked for the binding, or `web` for the Web client.' }],
+        throws: ['when the Session is bound to another chat.'],
+      },
+      {
+        signature: 'async unbind(chatId: FeishuChatId): Promise<boolean>',
+        description: 'Remove a chat\'s binding.',
+        parameters: [{ name: 'chatId', description: 'Feishu chat.' }],
+        returns: 'whether the chat was bound.',
+      },
+      {
+        signature: '@Remote status(agent: Agent): FeishuSessionStatus',
+        description: 'Read a Session\'s Feishu connection and the chats it can connect to.',
+        parameters: [{ name: 'agent', description: 'Session owner supplied by the Gateway.' }],
+        returns: 'the bound chat and the served chats in which an allowed user wrote to the bot.',
+      },
+      {
+        signature: '@Remote async connect(agent: Agent, request: FeishuConnectRequest): Promise<FeishuSessionStatus>',
+        description: 'Connect a Session to a chat from the Web client. The Session\'s previous chat and the chat\'s previous Session are disconnected, and both chats are told.',
+        parameters: [{ name: 'agent', description: 'Session owner supplied by the Gateway.' }, { name: 'request', description: 'the chat, one listed by {@link FeishuBridge.status}.' }],
+        returns: 'the Session\'s connection afterwards.',
+        throws: ['when the chat is not served or no allowed user wrote in it.'],
+      },
+      {
+        signature: '@Remote async disconnect(agent: Agent): Promise<FeishuSessionStatus>',
+        description: 'Disconnect a Session from its chat from the Web client, and tell the chat.',
+        parameters: [{ name: 'agent', description: 'Session owner supplied by the Gateway.' }],
+        returns: 'the Session\'s connection afterwards.',
+      },
+    ],
+  },
+  {
     key: 'fileReferences',
     summary: 'Host capability for cancellable file-reference discovery.',
     description: 'Host capability for cancellable file-reference discovery.',
@@ -5847,6 +5897,26 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'FeedbackCategory',
     declaration: 'export type FeedbackCategory = \'task-result\' | \'instruction-following\' | \'product-interaction\' | \'service-stability\' | \'resource-cost\' | \'security-privacy-permission\' | \'other\';',
+  },
+  {
+    name: 'FeishuChatId',
+    declaration: 'export type FeishuChatId = Branded<\'FeishuChatId\'>;',
+  },
+  {
+    name: 'FeishuChatSummary',
+    declaration: 'export interface FeishuChatSummary {\n    chatId: FeishuChatId;\n    chatType: \'p2p\' | \'group\';\n    name: string | null;\n    sessionId: SessionId | null;\n}',
+  },
+  {
+    name: 'FeishuConnectRequest',
+    declaration: 'export interface FeishuConnectRequest {\n    chatId: FeishuChatId;\n}',
+  },
+  {
+    name: 'FeishuOpenId',
+    declaration: 'export type FeishuOpenId = Branded<\'FeishuOpenId\'>;',
+  },
+  {
+    name: 'FeishuSessionStatus',
+    declaration: 'export interface FeishuSessionStatus {\n    chat: FeishuChatSummary | null;\n    chats: FeishuChatSummary[];\n}',
   },
   {
     name: 'FiberState',

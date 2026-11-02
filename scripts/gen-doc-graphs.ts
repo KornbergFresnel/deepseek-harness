@@ -214,6 +214,13 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Reads and switches the Git branch of a Session working directory through the Session subprocess provider for the Web client; nothing reaches a model request.',
   },
   {
+    key: 'feishuBridge',
+    pkg: 'experimental-feishu-bridge',
+    title: 'Feishu chat bridge',
+    mode: 'core',
+    note: 'Binds Feishu chats to Workspace Sessions through lark-cli: chat messages become user prompts, replies return as cards, and card buttons and forms answer permission requests and questions.',
+  },
+  {
     key: 'workingDirectory',
     pkg: 'working-directory',
     title: 'Session working directory',

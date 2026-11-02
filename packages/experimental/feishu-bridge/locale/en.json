@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Feishu chat bridge",
+    "description": "Chat with Sessions from Feishu through lark-cli, with replies as rich cards and permission approvals and questions answered from card buttons."
+  }
+}

@@ -1135,6 +1135,63 @@ export type Config = CuaConfig
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-cua-macos -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-feishu-bridge -->
+<a id="deepseek-aidsh-experimental-feishu-bridge"></a>
+
+## `@deepseek-ai/dsh-experimental-feishu-bridge`
+
+- `inject`: `agents` · `sessionController` · `storageDomain` · `subprocess` · `workspaceRegistry`
+- `source`: [`packages/experimental/feishu-bridge/src/index.ts:57`](../packages/experimental/feishu-bridge/src/index.ts)
+
+```ts config-catalog
+/** lark-cli invocation, access control, Session placement, and forwarding policy. */
+export interface Config {
+  /** Executable name on PATH or absolute path of lark-cli. */
+  command?: string
+  /** lark-cli profile passed as `--profile`; omitted uses the active profile. */
+  profile?: string
+  /** Feishu open_ids (`ou_…`) allowed to prompt, run commands, approve, and answer; required and non-empty. */
+  allowedUsers: string[]
+  /** Chats (`oc_…`) the bridge serves; omitted or empty serves every chat an allowed user writes in. */
+  allowedChats?: string[]
+  /**
+   * Absolute directory of the Workspace that Sessions created from Feishu join without asking. Omitted, a chat
+   * without a Session gets a card to choose one of the registered Workspaces.
+   */
+  workspacePath?: string
+  /** Agent preset for Sessions created from Feishu; omitted uses the deployment default. */
+  agentPreset?: string
+  /** Permission preset applied to Sessions created from Feishu; omitted keeps the deployment default. */
+  permissionPreset?: string
+  /** Language of the bridge's own card text. */
+  locale?: CardLocale
+  /** Show the model's reasoning in a collapsed panel above each reply. */
+  forwardReasoning?: boolean
+  /** Show the tool calls of each assistant message in a collapsed panel. */
+  forwardToolCalls?: boolean
+  /** Forward prompts that other clients, such as the Web UI, send to a bound Session. */
+  forwardOtherPrompts?: boolean
+  /** Maximum characters of Markdown in one card; longer replies are split. */
+  maxCardChars?: number
+  /** Maximum characters of one tool call's arguments shown in a card. */
+  maxArgumentChars?: number
+  /** Inbound message and callback ids remembered for duplicate-delivery detection. */
+  deliveryMemory?: number
+  /** Deadline in milliseconds for one lark-cli message API call. */
+  timeoutMs?: number
+  /** Subprocess termination grace in milliseconds. */
+  graceMs?: number
+  /** Maximum captured bytes per lark-cli output stream. */
+  maxOutputBytes?: number
+  /** Wait in milliseconds before restarting a lark-cli event consumer that exited. */
+  restartDelayMs?: number
+}
+
+/** Languages the card copy is written in. */
+export type CardLocale = 'en' | 'zh'
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-feishu-bridge -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-git-branch -->
 <a id="deepseek-aidsh-experimental-git-branch"></a>
 
@@ -4900,6 +4957,7 @@ export interface Config {
 | `@deepseek-ai/dsh-experimental-client-ui-agent-team` | — | [`packages/experimental/client-ui-agent-team/src/index.ts`](../packages/experimental/client-ui-agent-team/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-client-ui-claude-code-mods` | — | [`packages/experimental/client-ui-claude-code-mods/src/index.ts`](../packages/experimental/client-ui-claude-code-mods/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-client-ui-cluster-monitor` | — | [`packages/experimental/client-ui-cluster-monitor/src/index.ts`](../packages/experimental/client-ui-cluster-monitor/src/index.ts) |
+| `@deepseek-ai/dsh-experimental-client-ui-feishu-bridge` | — | [`packages/experimental/client-ui-feishu-bridge/src/index.ts`](../packages/experimental/client-ui-feishu-bridge/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-client-ui-git-branch` | — | [`packages/experimental/client-ui-git-branch/src/index.ts`](../packages/experimental/client-ui-git-branch/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-client-ui-voice-input` | — | [`packages/experimental/client-ui-voice-input/src/index.ts`](../packages/experimental/client-ui-voice-input/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-computer-use-cua-driver-native` | `computerUse` · `tools` · `systemPrompt` | [`packages/experimental/computer-use-cua-driver-native/src/index.ts`](../packages/experimental/computer-use-cua-driver-native/src/index.ts) |
