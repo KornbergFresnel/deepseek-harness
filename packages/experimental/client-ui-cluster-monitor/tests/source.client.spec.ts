@@ -8,7 +8,7 @@ import { expect, it, onTestFinished, vi } from 'vitest'
 import { observeForms, observeJob, observeOverview, observeWatchList } from '../src/client/source.ts'
 
 const id = brandString<ClusterWatchId>('w1')
-const row: ClusterWatchRow = { id, name: 'job-wbt', origin: 'manual', phase: 'running', rawState: 'Running', watchedAt: 't', latest: {} }
+const row: ClusterWatchRow = { id, name: 'job-wbt', origin: 'manual', phase: 'running', rawState: 'Running', watchedAt: 't', latest: {}, metrics: { kind: 'logs' }, metricsDefault: true }
 
 function fixture(failure?: unknown) {
   const abort = new AbortController(), release = Promise.withResolvers<undefined>(), accept = vi.fn()

@@ -178,7 +178,8 @@ describe('WorkloadForm', () => {
   })
 
   it('says when no data sources are registered and keeps an unlisted current value selectable', () => {
-    form({ overview: { ...overview, sources: [], options: undefined, configs: [] } as ScoConfigOverview, initial: { queueId: 'q-gone', code: 'gone' } })
+    const { options: _options, ...overviewWithoutOptions } = overview
+    form({ overview: { ...overviewWithoutOptions, sources: [], configs: [] }, initial: { queueId: 'q-gone', code: 'gone' } })
     expect(screen.getByText(zh['field.noSources'])).toBeTruthy()
     expect(field(zh['field.queue']).value).toBe('q-gone')
     expect(field(zh['field.code']).value).toBe('gone')

@@ -21,13 +21,15 @@ const row = (id: string, extra: Partial<ClusterWatchRow> = {}): ClusterWatchRow 
   id: brandString<ClusterWatchId>(id), name: `job-${id}`, sessionId: session, origin: 'created', phase: 'running', rawState: 'Running',
   watchedAt: 't', latest: {}, metrics: { kind: 'logs' }, metricsDefault: true, ...extra,
 })
+/** A watch outside any Session, unlike the owned rows above. */
+const { sessionId: _session, ...unowned } = row('y')
 const rows = [
   row('a', { workspace: 'ws', step: 120, latest: { loss: 0.123456, reward: 3, extra: 1 }, description: 'G1 tracking' }),
   row('b', { phase: 'pending', error: 'describe failed' }),
   row('c', { phase: 'succeeded' }),
   row('d', { phase: 'pending' }),
   row('x', { sessionId: other }),
-  row('y', { sessionId: undefined }),
+  unowned,
 ]
 
 function actions() {
