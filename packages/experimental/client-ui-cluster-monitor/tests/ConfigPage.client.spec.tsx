@@ -32,6 +32,7 @@ const overview: ScoConfigOverview = {
     { name: 'pods', template: { podCount: 3 } },
     { name: 'empty', template: {} },
   ],
+  configs: [],
   options: {
     workspace: 'ws', fetchedAt: '2026-10-21T00:00:00.000Z',
     queues: [
@@ -64,7 +65,7 @@ const section = (title: string) => screen.getByRole('region', { name: title })
 it('shows loading and disconnected states, then gateway defaults with CLI fallbacks', () => {
   const b = fixture({ value: null, connected: false, error: null })
   expect(screen.getByText(zh['page.loading'])).toBeTruthy()
-  act(() => { b.store.set({ value: { configured: {}, saved: {}, outputMountPath: '/out', sources: [], templates: [] }, connected: false, error: 'lost' }) })
+  act(() => { b.store.set({ value: { configured: {}, saved: {}, outputMountPath: '/out', sources: [], templates: [], configs: [] }, connected: false, error: 'lost' }) })
   expect(screen.getByText(zh['page.disconnected'])).toBeTruthy()
   const basics = section(zh['basics.title'])
   expect(within(basics).getByText(zh['basics.cliDefault'])).toBeTruthy()
@@ -76,7 +77,7 @@ it('shows loading and disconnected states, then gateway defaults with CLI fallba
   expect(within(section(zh['options.title'])).queryByRole('button')).toBeNull()
   act(() => {
     b.store.set({
-      value: { workspace: 'ws', queueId: 'q1', configured: { workspace: 'ws' }, saved: { queueId: 'q1' }, outputMountPath: '/out', sources: [], templates: [] },
+      value: { workspace: 'ws', queueId: 'q1', configured: { workspace: 'ws' }, saved: { queueId: 'q1' }, outputMountPath: '/out', sources: [], templates: [], configs: [] },
       connected: true, error: null,
     })
   })
@@ -236,7 +237,8 @@ it('edits a source with a locked name and an unlisted volume, and removes one af
 })
 
 it('round-trips every source kind through the form fields', () => {
-  for (const source of [code, data, output, { ...data, path: 'p' }, { ...code, setup: undefined }]) expect(sourceOf(draftOf('x', source))).toEqual(source)
+  const { setup: _setup, ...codeWithoutSetup } = code
+  for (const source of [code, data, output, { ...data, path: 'p' }, codeWithoutSetup]) expect(sourceOf(draftOf('x', source))).toEqual(source)
 })
 
 it('renders the decorative sidebar icon', () => {

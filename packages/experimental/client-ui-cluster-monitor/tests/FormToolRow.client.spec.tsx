@@ -68,7 +68,8 @@ it('answers the open form with the confirmed settings or a cancellation', async 
   fireEvent.click(screen.getByRole('button', { name: zh['form.cancel'] }))
   expect(b.answer).toHaveBeenLastCalledWith(callId, { kind: 'cancelled' })
   cleanup()
-  row({ phase: 'start', block: { argsRaw: '{}' } }, [{ ...open, title: undefined, kind: 'devmachine', suggested: 'dev' } as ScoConfigForm])
+  const { title: _title, ...untitled } = open
+  row({ phase: 'start', block: { argsRaw: '{}' } }, [{ ...untitled, kind: 'devmachine', suggested: 'dev' }])
   expect(screen.getByRole('heading', { name: zh['form.title.devmachine'] })).toBeTruthy()
   cleanup()
   row({ phase: 'start', block: { argsRaw: '{}' } }, [{ callId, kind: 'job', initial: {}, openedAt: 't' }])

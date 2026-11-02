@@ -15,6 +15,7 @@ import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
+import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import ApprovalService from '@deepseek-ai/dsh-user-approval'
 import type { ApprovalOutcome, ApprovalRequest } from '@deepseek-ai/dsh-user-approval'
@@ -51,6 +52,7 @@ async function boot(toolConfig: string[] = [], submit = false, monitor = false):
     ['@deepseek-ai/dsh-system-prompt', SystemPrompt],
     ['@deepseek-ai/dsh-llm', LlmRuntime],
     ['@deepseek-ai/dsh-tools', ToolRuntime],
+    ['@deepseek-ai/dsh-tool-executor-native', NativeToolExecutor],
     ['@deepseek-ai/dsh-user-approval', ApprovalService],
     ['@deepseek-ai/dsh-subprocess-local', LocalSubprocessRuntime],
     ['@deepseek-ai/dsh-experimental-sco', ScoGateway],
@@ -94,8 +96,23 @@ async function boot(toolConfig: string[] = [], submit = false, monitor = false):
   return { ctx, agent }
 }
 
+/** Execute one tool call through the batch API and return its settled result. */
+async function executeTool(
+  ctx: Context, name: string, callId: string, args: Record<string, JsonValue>,
+  options: { agent?: Agent; signal?: AbortSignal } = {},
+) {
+  const batch = await ctx.tools.execute({
+    calls: [{ type: 'tool-call', id: ToolCallId(callId), name, arguments: JSON.stringify(args) }],
+    signal: options.signal ?? new AbortController().signal,
+    ...(options.agent !== undefined ? { agent: options.agent } : {}),
+  })
+  const outcome = batch.results[0]?.result
+  if (outcome === undefined) throw new Error(`tool ${name} produced no result`)
+  return outcome
+}
+
 function call(ctx: Context, agent: Agent, name: string, args: Record<string, JsonValue>) {
-  return ctx.tools.execute({ name, callId: ToolCallId(`${name}-${Math.random()}`), arguments: args, agent, signal: new AbortController().signal })
+  return executeTool(ctx, name, `${name}-${Math.random()}`, args, { agent })
 }
 
 function text(result: { content: readonly { type: string; text?: string }[] }): string {
@@ -297,10 +314,7 @@ describe('configuration forms through real Loader composition', () => {
     const { ctx, agent } = await boot([], true)
     await call(ctx, agent, 'sco_source_add', { name: 'rlh', kind: 'code', volumeType: 'afs', volumeId: 'vol-code', root: 'code', mountPath: '/code', defaultRef: 'main' })
     const first = ToolCallId('form-1')
-    const running = ctx.tools.execute({
-      name: 'sco_config_form', callId: first, agent, signal: new AbortController().signal,
-      arguments: { kind: 'job', title: 'WBT', initial: { image: 'registry/rlh:wbt', code: 'rlh', gpuCount: 8, env: { SEED: '1' } } },
-    })
+    const running = executeTool(ctx, 'sco_config_form', 'form-1', { kind: 'job', title: 'WBT', initial: { image: 'registry/rlh:wbt', code: 'rlh', gpuCount: 8, env: { SEED: '1' } } }, { agent })
     const form = await opened(ctx, first)
     expect(form).toMatchObject({ kind: 'job', title: 'WBT', sessionId: 'tool-sco-loader', initial: { image: 'registry/rlh:wbt', code: 'rlh', gpuCount: 8, env: { SEED: '1' } } })
     await ctx.scoSubmit.answerForm(first, { kind: 'confirmed', spec: { ...form.initial, podCount: 2 }, save: { name: 'wbt-8gpu', description: 'WBT on 8 GPUs' } })
@@ -311,7 +325,7 @@ describe('configuration forms through real Loader composition', () => {
     expect(listed.value).toMatchObject({ configs: { 'wbt-8gpu': { kind: 'job', description: 'WBT on 8 GPUs', spec: { podCount: 2 } } } })
 
     const second = ToolCallId('form-2')
-    const again = ctx.tools.execute({ name: 'sco_config_form', callId: second, agent, signal: new AbortController().signal, arguments: { kind: 'job', suggested: 'wbt-8gpu' } })
+    const again = executeTool(ctx, 'sco_config_form', 'form-2', { kind: 'job', suggested: 'wbt-8gpu' }, { agent })
     expect(await opened(ctx, second)).toMatchObject({ suggested: 'wbt-8gpu', initial: {} })
     await ctx.scoSubmit.answerForm(second, { kind: 'cancelled' })
     expect((await again).value).toEqual({ kind: 'cancelled' })
@@ -325,7 +339,7 @@ describe('configuration forms through real Loader composition', () => {
     const { ctx } = await boot([], true)
     const lifetime = new AbortController()
     const callId = ToolCallId('form-cancel')
-    const running = ctx.tools.execute({ name: 'sco_config_form', callId, signal: lifetime.signal, arguments: { kind: 'devmachine' } })
+    const running = executeTool(ctx, 'sco_config_form', 'form-cancel', { kind: 'devmachine' }, { signal: lifetime.signal })
     expect((await opened(ctx, callId)).sessionId).toBeUndefined()
     lifetime.abort(new Error('turn stopped'))
     expect((await running).isError).toBe(true)
@@ -350,7 +364,7 @@ describe('job watching through real Loader composition', () => {
     expect(text(await call(ctx, agent, 'sco_job_watch', { name: 'job-wbt', metrics: { kind: 'wandb' } }))).toContain('no metric source "wandb" is registered; registered: logs')
     expect(text(await call(ctx, agent, 'sco_job_watch', { name: 'job-wbt', metrics: { kind: 'logs', options: [1] } }))).toContain('metrics.options must be an object')
     expect(ctx.tools.get('sco_job_watch')!.presentCall!({ name: 'job-wbt' })).toMatchObject({ title: 'sco_job_watch job-wbt' })
-    const outside = await ctx.tools.execute({ name: 'sco_job_watch', callId: ToolCallId('watch-outside'), arguments: { name: 'job-out' }, signal: new AbortController().signal })
+    const outside = await executeTool(ctx, 'sco_job_watch', 'watch-outside', { name: 'job-out' })
     expect(outside.value).toMatchObject({ name: 'job-out', metricsDefault: true })
     expect(ctx.clusterMonitor.list().find(row => row.name === 'job-out')?.sessionId).toBeUndefined()
 

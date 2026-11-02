@@ -27,7 +27,9 @@ async function boot(key: string | null = 'secret', config: Partial<Wandb.Config>
   } as never)
   const resolve = vi.fn(async () => key === null ? undefined : { value: key, source: 'environment' })
   ctx.provide('credentials', { resolve } as never)
-  await ctx.plugin(Wandb, config)
+  const defaults = Wandb.Config()
+  // oxlint-disable-next-line typescript/no-misused-spread -- the call resolves plain defaults; spreading that value is safe.
+  await ctx.plugin(Wandb, { ...defaults, ...config })
   return { ctx, registered, unregister, resolve, source: () => registered.get('wandb')! }
 }
 

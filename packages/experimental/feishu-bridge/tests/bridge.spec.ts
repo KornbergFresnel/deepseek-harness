@@ -139,7 +139,10 @@ interface BootOptions {
   services?: boolean
 }
 
-async function boot(config: Partial<Config> = {}, options: BootOptions = {}): Promise<Harness> {
+/** Config overrides; an explicit `undefined` workspacePath starts without a selected workspace. */
+type BootConfig = Partial<Omit<Config, 'workspacePath'>> & { workspacePath?: string | undefined }
+
+async function boot(config: BootConfig = {}, options: BootOptions = {}): Promise<Harness> {
   const root = options.root ?? await realpath(await mkdtemp(join(tmpdir(), 'dsh-feishu-')))
   if (options.root === undefined) cleanup.push(root)
   const transport = options.transport ?? new FakeTransport()
@@ -217,7 +220,13 @@ async function boot(config: Partial<Config> = {}, options: BootOptions = {}): Pr
       super(scope, value, { transport })
     }
   }
-  await ctx.plugin(TestBridge, { allowedUsers: [ALICE], workspacePath: '/work/rlh', locale: 'en', ...config })
+  const { workspacePath, ...rest } = config
+  // An explicit `workspacePath: undefined` starts without a selected workspace; an absent one keeps the default.
+  const selected = 'workspacePath' in config ? workspacePath : '/work/rlh'
+  await ctx.plugin(TestBridge, {
+    allowedUsers: [ALICE], locale: 'en', ...rest,
+    ...(selected !== undefined ? { workspacePath: selected } : {}),
+  })
   await vi.waitFor(() => { expect(transport.ready).toBe(true) })
   return { ctx, transport, root, agents, workspaces, calls }
 }
