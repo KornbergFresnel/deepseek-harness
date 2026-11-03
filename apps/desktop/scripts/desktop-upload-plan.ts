@@ -7,6 +7,7 @@ import { basename, join, resolve } from 'node:path'
 import { dump, load } from 'js-yaml'
 import {
   desktopBuildRecordFilename,
+  desktopLatestInstallerFilename,
   desktopUpdateMetadataFilename,
   resolveDesktopUploadConfig,
   type DesktopAutoUpdateTarget,
@@ -218,7 +219,7 @@ export async function createDesktopUploadPlan(
     throw new Error(`desktop upload: ${targetName} package completion record for ${buildVersion} does not match the ${update.environment} update destination`)
   }
 
-  if (update.channel === 'latest' && buildVersion.includes('-')) throw new Error('desktop upload: latest requires a stable version')
+  if (update.channel === 'stable' && buildVersion.includes('-')) throw new Error('desktop upload: stable requires a stable version')
   const metadataFilename = desktopUpdateMetadataFilename(buildVersion, target.platform, update.channel)
   const metadataPath = join(artifactsRoot, metadataFilename)
   let metadataValue: unknown
@@ -277,7 +278,7 @@ export async function createDesktopUploadPlan(
     contents: dump(published),
   }
   artifacts.push(channelArtifact)
-  const latestFilename = `dsh-latest-${target.platform === 'darwin' ? 'macos' : 'windows'}-${target.arch}.${target.platform === 'darwin' ? 'dmg' : 'exe'}`
+  const latestFilename = desktopLatestInstallerFilename(targetName)
   const latestKey = `desktop/${latestFilename}`
   return {
     environment: update.environment,
