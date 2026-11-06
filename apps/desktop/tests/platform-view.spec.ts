@@ -150,6 +150,19 @@ it('injects the deployment and client identity headers only at the Platform orig
   manager.close()
 })
 
+it('identifies Linux embedded Platform requests with the accepted desktop identity', async () => {
+  const owner = Object.assign(new EventEmitter(), {
+    webContents: new EventEmitter(), contentView: { addChildView: vi.fn(), removeChildView: vi.fn() }, isDestroyed: () => false,
+  })
+  const manager = new DesktopPlatformView('/bundled/preload.cjs', () => 'en_US', 'linux', () => false)
+  manager.setSession({ origin: 'https://platform.deepseek.com', userId: null, token: 'fixture-secret' })
+  await manager.open(owner, 'usage', bounds)
+  expect(interceptHeaders(1, 'https://platform.deepseek.com/usage', {})).toMatchObject({
+    'x-client-platform': 'desktop-mac',
+  })
+  manager.close()
+})
+
 it('samples the language and UTC offset on every Platform request', async () => {
   let locale: 'en_US' | 'zh_CN' = 'en_US'
   const owner = Object.assign(new EventEmitter(), {

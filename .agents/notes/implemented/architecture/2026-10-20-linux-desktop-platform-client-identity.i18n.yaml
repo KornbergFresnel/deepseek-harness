@@ -1,0 +1,22 @@
+# Bilingual-pair consistency record for 2026-10-20-linux-desktop-platform-client-identity.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-10-20-linux-desktop-platform-client-identity.md
+/agent-note-linux-desktop-signs-in-with-the-macos-platform-client-identity:
+  en: 8654174774ae9e6b
+  zh: d80c8e3328ce1706
+/agent-note-linux-desktop-signs-in-with-the-macos-platform-client-identity/problem:
+  en: 2b3f396d951e3af3
+  zh: b9da774443c6fde6
+/agent-note-linux-desktop-signs-in-with-the-macos-platform-client-identity/decision:
+  en: 156cb41a6de6c46e
+  zh: 123d264fa885b6a8
+/agent-note-linux-desktop-signs-in-with-the-macos-platform-client-identity/alternatives-considered:
+  en: 6515fe085780a162
+  zh: 880909d1842ac5ed
+/agent-note-linux-desktop-signs-in-with-the-macos-platform-client-identity/consequences:
+  en: 63dd5adc11a790e6
+  zh: 7108675e8640de85
+/agent-note-linux-desktop-signs-in-with-the-macos-platform-client-identity/testing:
+  en: 05944ace35d5e306
+  zh: b6b92d35c39a516d

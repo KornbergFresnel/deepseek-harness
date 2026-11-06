@@ -136,14 +136,28 @@ export function mergePlatformCookies(base: string, override: string): string {
   return [...cookies].map(([name, value]) => `${name}=${value}`).join('; ')
 }
 
+/** Operating systems the native Desktop composition can identify as the client host. */
+export type DesktopClientPlatform = 'darwin' | 'win32' | 'linux'
+
+/**
+ * Platform's `x-client-platform` value for each native Desktop operating system.
+ * Platform's `auth_exchange` header enum accepts only `web`, `desktop-mac`, and `desktop-win`,
+ * so Linux presents the macOS identity to complete desktop sign-in.
+ */
+const DESKTOP_CLIENT_PLATFORM: Readonly<Record<DesktopClientPlatform, string>> = {
+  darwin: 'desktop-mac',
+  win32: 'desktop-win',
+  linux: 'desktop-mac',
+}
+
 /**
  * Identify native desktop API requests; null leaves non-desktop requests unchanged.
  * @param platform - Operating system supplied by the desktop composition.
  * @returns Platform request headers shared by account and update-policy clients.
  */
-export function desktopClientHeaders(platform: 'darwin' | 'win32' | null): Record<string, string> {
+export function desktopClientHeaders(platform: DesktopClientPlatform | null): Record<string, string> {
   if (platform === null) return {}
-  return { 'x-client-platform': platform === 'win32' ? 'desktop-win' : 'desktop-mac' }
+  return { 'x-client-platform': DESKTOP_CLIENT_PLATFORM[platform] }
 }
 
 /**
@@ -152,7 +166,7 @@ export function desktopClientHeaders(platform: 'darwin' | 'win32' | null): Recor
  * @param client - identity of the requesting UI for this call.
  * @returns the five client headers; the bundle ID is intentionally empty.
  */
-export function platformClientHeaders(platform: 'darwin' | 'win32' | null, client: AccountClientMetadata): Record<string, string> {
+export function platformClientHeaders(platform: DesktopClientPlatform | null, client: AccountClientMetadata): Record<string, string> {
   return {
     'x-client-bundle-id': '',
     'x-client-platform': 'web',
